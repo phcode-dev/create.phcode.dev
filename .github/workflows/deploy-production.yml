@@ -1,8 +1,8 @@
-name: Deploy Notification To production phcode.dev
+name: Deploy Notification To create.phcode.dev
 
 on:
   repository_dispatch:
-    types: [deploy-production]
+    types: [deploy-production-create]
 
 jobs:
   build-tasks:
@@ -42,4 +42,4 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
-          cname: phcode.dev
+          cname: create.phcode.dev
