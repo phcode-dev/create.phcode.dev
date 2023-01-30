@@ -24,7 +24,7 @@ jobs:
         working-directory: ./phoenix
         run: |
           npm install
-          npm run release:prod
+          npm run release:dev
           npm run zipTestFiles
           cp -r dist distToDeploy/
           cp -r dist distToDeploy/src/
