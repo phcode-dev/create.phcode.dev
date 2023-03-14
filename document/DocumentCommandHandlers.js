@@ -21,6 +21,7 @@
 
 // jshint ignore: start
 /*jslint regexp: true */
+/*globals logger*/
 
 define(function (require, exports, module) {
 
@@ -173,7 +174,7 @@ define(function (require, exports, module) {
      * We only log the standard filetypes and fileSize
      * @param {String} filePath The path of the file to be registered
      */
-    function _fileSaved(docToSave) {
+    function _fileSavedMetrics(docToSave) {
         if (!docToSave) {
             return;
         }
@@ -907,7 +908,7 @@ define(function (require, exports, module) {
                 .done(function () {
                     docToSave.notifySaved();
                     result.resolve(file);
-                    _fileSaved(docToSave);
+                    _fileSavedMetrics(docToSave);
                 })
                 .fail(function (err) {
                     if (err === FileSystemError.CONTENTS_MODIFIED) {
@@ -915,10 +916,14 @@ define(function (require, exports, module) {
                     } else {
                         handleError(err);
                     }
+                })
+                .always(function () {
+                    docToSave.isSaving = false;
                 });
         }
 
         if (docToSave.isDirty) {
+            docToSave.isSaving = true;
             if (docToSave.keepChangesTime) {
                 // The user has decided to keep conflicting changes in the editor. Check to make sure
                 // the file hasn't changed since they last decided to do that.
@@ -1087,7 +1092,7 @@ define(function (require, exports, module) {
                     } else {
                         openNewFile();
                     }
-                    _fileSaved(doc);
+                    _fileSavedMetrics(doc);
                 })
                 .fail(function (error) {
                     _showSaveFileError(error, path)
@@ -1777,21 +1782,41 @@ define(function (require, exports, module) {
      * Restarts brackets Handler
      * @param {boolean=} loadWithoutExtensions - true to restart without extensions,
      *                                           otherwise extensions are loadeed as it is durning a typical boot
+     * @param {Array<String>|string} loadDevExtensionPath If specified, will load the extension from the path. IF
+     * and empty array is specified, it will unload all dev extensions on reload.
      */
-    function handleReload(loadWithoutExtensions) {
+    function handleReload(loadWithoutExtensions, loadDevExtensionPath) {
         var href    = window.location.href,
             params  = new UrlParams();
 
         // Make sure the Reload Without User Extensions parameter is removed
         params.parse();
 
+        function _removeLoadDevExtensionPathParam() {
+            if (params.get("loadDevExtensionPath")) {
+                params.remove("loadDevExtensionPath");
+                // only remove logging flag if the flag is set for loadDevExtensionPath
+                if (params.get(logger.loggingOptions.LOCAL_STORAGE_KEYS.LOG_TO_CONSOLE_KEY)) {
+                    params.remove(logger.loggingOptions.LOCAL_STORAGE_KEYS.LOG_TO_CONSOLE_KEY);
+                }
+            }
+        }
+
         if (loadWithoutExtensions) {
             if (!params.get("reloadWithoutUserExts")) {
                 params.put("reloadWithoutUserExts", true);
             }
+            _removeLoadDevExtensionPathParam();
         } else {
             if (params.get("reloadWithoutUserExts")) {
                 params.remove("reloadWithoutUserExts");
+            }
+            if(loadDevExtensionPath && loadDevExtensionPath.length){
+                params.put("loadDevExtensionPath", loadDevExtensionPath);
+                // since we are loading a development extension, we have to enable detailed logs too on reload
+                params.put(logger.loggingOptions.LOCAL_STORAGE_KEYS.LOG_TO_CONSOLE_KEY, "true");
+            } else if (loadDevExtensionPath && loadDevExtensionPath.length === 0) {
+                _removeLoadDevExtensionPathParam();
             }
         }
 

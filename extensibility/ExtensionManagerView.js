@@ -29,6 +29,7 @@ define(function (require, exports, module) {
         StringUtils               = require("utils/StringUtils"),
         ExtensionManager          = require("extensibility/ExtensionManager"),
         registry_utils            = require("extensibility/registry_utils"),
+        NativeApp                 = require("utils/NativeApp"),
         Commands                  = require("command/Commands"),
         CommandManager            = require("command/CommandManager"),
         ThemeManager              = require("view/ThemeManager"),
@@ -235,9 +236,22 @@ define(function (require, exports, module) {
                 self._installUsingDialog($(e.target).attr("data-extension-id"), true);
             })
             .on("click", "button.undoTheme", function (e) {
+                Metrics.countEvent(Metrics.EVENT_TYPE.EXTENSIONS, "btnClick", "undoTheme");
                 $("#ThemeViewThemeRevert").addClass("forced-hidden");
                 $("#InstalledViewThemeRevert").addClass("forced-hidden");
                 ThemeManager.setCurrentTheme(originalTheme.name);
+                e.preventDefault();
+                e.stopPropagation();
+            })
+            .on("click", "button.createTheme", function (e) {
+                Metrics.countEvent(Metrics.EVENT_TYPE.EXTENSIONS, "btnClick", "createTheme");
+                NativeApp.openURLInDefaultBrowser("https://github.com/phcode-dev/theme-template");
+                e.preventDefault();
+                e.stopPropagation();
+            })
+            .on("click", "button.createExtesnion", function (e) {
+                Metrics.countEvent(Metrics.EVENT_TYPE.EXTENSIONS, "btnClick", "createExtension");
+                NativeApp.openURLInDefaultBrowser("https://github.com/phcode-dev/extension-template");
                 e.preventDefault();
                 e.stopPropagation();
             })
@@ -487,9 +501,12 @@ define(function (require, exports, module) {
     ExtensionManagerView.prototype._installUsingDialog = function (id, _isUpdate) {
         var entry = this.model.extensions[id];
         if (entry && entry.registryInfo) {
-            var compatInfo = ExtensionManager.getCompatibilityInfo(entry.registryInfo, brackets.metadata.apiVersion),
-                url = ExtensionManager.getExtensionURL(id, compatInfo.compatibleVersion);
+            const compatInfo = ExtensionManager.getCompatibilityInfo(entry.registryInfo, brackets.metadata.apiVersion),
+                url = ExtensionManager.getExtensionURL(id, compatInfo.compatibleVersion),
+                versionToInstall = entry.registryInfo.metadata.version;
 
+            fetch(`https://publish.phcode.dev/countDownload?extensionName=${id}&extensionVersion=${versionToInstall}`)
+                .catch(console.error);
             // TODO: this should set .done on the returned promise
             if (_isUpdate) {
                 // save to metric id as it is from public extension store.
