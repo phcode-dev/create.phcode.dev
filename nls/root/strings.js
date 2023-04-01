@@ -60,6 +60,10 @@ define({
     "REQUEST_NATIVE_FILE_SYSTEM_ERROR": "An error occurred when trying to load the directory <span class='dialog-filename'>{0}</span>. (error {1})",
     "READ_DIRECTORY_ENTRIES_ERROR": "An error occurred when reading the contents of the directory <span class='dialog-filename'>{0}</span>. (error {1})",
 
+    // FirefoxZoom Dialogue
+    "ZOOM_WITH_SHORTCUTS": "Use Keyboard Shortcuts to Zoom",
+    "ZOOM_WITH_SHORTCUTS_DETAILS": "Please use keyboard shortcuts <code><i>{0}</i></code> to Zoom In and <code><i>{1}</i></code> to Zoom Out.",
+
     // File open/save error string
     "ERROR_OPENING_FILE_TITLE": "Error Opening File",
     "ERROR_OPENING_FILE": "An error occurred when trying to open the file <span class='dialog-filename'>{0}</span>. {1}",
@@ -83,6 +87,7 @@ define({
     "ERR_TYPE_PASTE_FAILED": "An error occurred while pasting <span class='dialog-filename'>{0}</span> to <span class='dialog-filename'>{1}</span>",
     "CANNOT_DUPLICATE_TITLE": "Cannot Duplicate",
     "ERR_TYPE_DUPLICATE_FAILED": "An error occurred while duplicating <span class='dialog-filename'>{0}</span>",
+    "ERR_TYPE_DUPLICATE_FAILED_NO_FILE": "Please select a file to duplicate.",
     "INVALID_FILENAME_MESSAGE": "{0} cannot use any system reserved words, end with dots (.) or use any of the following characters: <code class='emphasized'>{1}</code>",
     "ENTRY_WITH_SAME_NAME_EXISTS": "A file or directory with the name <span class='dialog-filename'>{0}</span> already exists.",
     "ERROR_CREATING_FILE_TITLE": "Error Creating {0}",
@@ -347,6 +352,7 @@ define({
     "CMD_FILE_NEW_UNTITLED": "New",
     "CMD_FILE_NEW": "New File",
     "CMD_FILE_DUPLICATE": "Duplicate",
+    "CMD_FILE_DUPLICATE_FILE": "Duplicate File",
     "CMD_FILE_DOWNLOAD_PROJECT": "Download Project",
     "CMD_FILE_DOWNLOAD": "Download",
     "CMD_FILE_CUT": "Cut",
@@ -431,6 +437,9 @@ define({
     "CMD_TOGGLE_SIDEBAR": "Toggle Sidebar",
     "CMD_TOGGLE_PANELS": "Toggle Panels",
     "CMD_TOGGLE_PURE_CODE": "No Distractions",
+    "CMD_ZOOM_UI": "Zoom UI and Fonts",
+    "CMD_ZOOM_IN": "Zoom In",
+    "CMD_ZOOM_OUT": "Zoom Out",
     "CMD_INCREASE_FONT_SIZE": "Increase Font Size",
     "CMD_DECREASE_FONT_SIZE": "Decrease Font Size",
     "CMD_RESTORE_FONT_SIZE": "Restore Font Size",
