@@ -31,12 +31,11 @@ define(function (require, exports, module) {
         AppInit      = brackets.getModule("utils/AppInit"),
         Strings      = brackets.getModule("strings"),
         Dialogs      = brackets.getModule("widgets/Dialogs"),
-        Mustache     = brackets.getModule("thirdparty/mustache/mustache"),
-        DefaultDialogs = brackets.getModule("widgets/DefaultDialogs"),
-        unSupportedBrowserTemplate     = require("text!html/unsupported-browser.html");
+        NotificationUI  = brackets.getModule("widgets/NotificationUI"),
+        DefaultDialogs = brackets.getModule("widgets/DefaultDialogs");
 
     const PERSIST_STORAGE_DIALOG_DELAY_SECS = 60000;
-    let $icon, unsupportedBrowserDialogShown;
+    let $icon;
 
     function _addToolbarIcon() {
         const helpButtonID = "help-button";
@@ -53,28 +52,38 @@ define(function (require, exports, module) {
         });
     }
     function _showUnSupportedBrowserDialogue() {
-        if(unsupportedBrowserDialogShown || Phoenix.isTestWindow){
-            return;
-        }
-        unsupportedBrowserDialogShown = true;
         if(Phoenix.browser.isMobile || Phoenix.browser.isTablet){
             Dialogs.showModalDialog(
                 DefaultDialogs.DIALOG_ID_ERROR,
-                Strings.UNSUPPORTED_BROWSER,
+                Strings.UNSUPPORTED_BROWSER_MOBILE_TITLE,
                 Strings.UNSUPPORTED_BROWSER_MOBILE
             );
             return;
         }
-        let templateVars = {
-            Strings: Strings,
-            surveyURL: "https://s.surveyplanet.com/6208d1eccd51c561fc8e59ca"
-        };
-        Dialogs.showModalDialogUsingTemplate(Mustache.render(unSupportedBrowserTemplate, templateVars));
+        Dialogs.showModalDialog(
+            DefaultDialogs.DIALOG_ID_ERROR,
+            Strings.UNSUPPORTED_BROWSER_TITLE,
+            Strings.UNSUPPORTED_BROWSER_MESSAGE
+        );
+        if (!("serviceWorker" in navigator)) {
+            // service worker is required for phcode to work
+            throw new Error("Service worker is not supported by the browser. Phcode cannot continue.");
+        }
     }
 
     function _detectUnSupportedBrowser() {
+        if(Phoenix.isTestWindow) {
+            return;
+        }
         if(!Phoenix.isSupportedBrowser){
             _showUnSupportedBrowserDialogue();
+        }
+        if(Phoenix.browser.desktop.isSafari || Phoenix.browser.mobile.isIos) {
+            NotificationUI.createToastFromTemplate( Strings.ATTENTION_SAFARI_USERS,
+                Strings.ATTENTION_SAFARI_USERS_MESSAGE, {
+                    dismissOnClick: false,
+                    toastStyle: NotificationUI.NOTIFICATION_STYLES_CSS_CLASS.DANGER
+                });
         }
     }
 
