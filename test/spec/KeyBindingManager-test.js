@@ -19,7 +19,7 @@
  *
  */
 
-/*global describe, beforeEach, afterEach, afterAll, it, expect, awaits */
+/*global describe, beforeEach, afterEach, afterAll, it, expect, awaits, awaitsFor */
 /*unittests: KeyBindingManager */
 
 define(function (require, exports, module) {
@@ -48,8 +48,8 @@ define(function (require, exports, module) {
             "Ctrl-Shift-L": "edit.splitSelIntoLines",
             "Alt-Shift-Down": "edit.addCursorToNextLine",
             "Alt-Shift-Up": "edit.addCursorToPrevLine",
-            "F8": "navigate.gotoFirstProblem",
-            "Ctrl-Alt-O": "file.openFolder",
+            "Ctrl-'": "navigate.gotoFirstProblem",
+            "Ctrl-1": "file.newFile",
             "Ctrl-Alt-H": "view.toggleSidebar",
             "Ctrl-Shift-O": "navigate.quickOpen",
             "Ctrl-T": "navigate.gotoDefinition"
@@ -60,7 +60,7 @@ define(function (require, exports, module) {
             "Alt-Shift-Down": "edit.addCursorToNextLine",
             "Alt-Shift-Up": "edit.addCursorToPrevLine",
             "Cmd-'": "navigate.gotoFirstProblem",
-            "Alt-Cmd-O": "file.openFolder",
+            "Cmd-1": "file.newFile",
             "Shift-Cmd-H": "view.toggleSidebar",
             "Shift-Cmd-O": "navigate.quickOpen",
             "Cmd-T": "navigate.gotoDefinition"
@@ -112,8 +112,7 @@ define(function (require, exports, module) {
             displayKey = KeyBindingManager._getDisplayKey(key);
             if (platform === "mac") {
                 explicitPlatform = undefined;
-                if (commandID === "edit.selectLine" || commandID === "view.toggleSidebar" ||
-                        commandID === "navigate.gotoFirstProblem") {
+                if (commandID === "edit.selectLine" || commandID === "view.toggleSidebar") {
                     explicitPlatform = "mac";
                 }
             }
@@ -458,9 +457,7 @@ define(function (require, exports, module) {
                 var imageTestFilesPath = SpecRunnerUtils.getTestPath("/spec/test-image-files");
                 KeyBindingManager._setUserKeyMapFilePath(imageTestFilesPath + "/eye.jpg");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when loading a corrupted key map file", async function () {
@@ -472,9 +469,7 @@ define(function (require, exports, module) {
                 };
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/invalid.json");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when loading a key map file with only whitespaces", async function () {
@@ -486,9 +481,7 @@ define(function (require, exports, module) {
                 };
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/whitespace.json");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should NOT show any error when loading a user key map file with an empty object", async function () {
@@ -534,9 +527,7 @@ define(function (require, exports, module) {
                 KeyBindingManager._initCommandAndKeyMaps();
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/reassignCopy.json");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when attempting to reassign a restricted shortcut (either bind to a special command or a mac system shortcut)", async function () {
@@ -560,9 +551,7 @@ define(function (require, exports, module) {
                 KeyBindingManager._initCommandAndKeyMaps();
                 KeyBindingManager._setUserKeyMapFilePath(testFilePath);
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when attempting to assign multiple shortcuts to the same command", async function () {
@@ -580,8 +569,7 @@ define(function (require, exports, module) {
                 KeyBindingManager._initCommandAndKeyMaps();
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/multipleShortcuts.json");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when attempting to set duplicate shortcuts", async function () {
@@ -599,8 +587,7 @@ define(function (require, exports, module) {
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/duplicateShortcuts.json");
                 KeyBindingManager._initCommandAndKeyMaps();
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when parsing invalid shortcuts", async function () {
@@ -621,9 +608,7 @@ define(function (require, exports, module) {
                 KeyBindingManager._initCommandAndKeyMaps();
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/invalidKeys.json");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should show an error when attempting to set shortcuts to non-existent commands", async function () {
@@ -632,7 +617,7 @@ define(function (require, exports, module) {
                     called = true;
                     var msgPrefix = Strings.ERROR_NONEXISTENT_COMMANDS.replace("{0}", "");
                     expect(message).toMatch(msgPrefix);
-                    expect(message).toMatch("file.openFolder");
+                    expect(message).toMatch("file.newFile");
                     expect(message).toMatch("view.toggleSidebar");
                     return {done: function (callback) { callback(Dialogs.DIALOG_BTN_OK); } };
                 };
@@ -641,9 +626,7 @@ define(function (require, exports, module) {
                 KeyBindingManager._initCommandAndKeyMaps();
                 KeyBindingManager._setUserKeyMapFilePath(testPath + "/keymap.json");
                 KeyBindingManager._loadUserKeyMap();
-                await awaits(300);
-
-                expect(called).toBeTrue();
+                await awaitsFor(()=>called, "called to be true");
             });
 
             it("should update key map with the user specified key bindings", async function () {
@@ -668,7 +651,7 @@ define(function (require, exports, module) {
                 let reassignedKey1 = (platform === "mac") ? "Alt-Cmd-Backspace" : "Ctrl-Alt-Backspace",
                     reassignedKey2 = (platform === "mac") ? "Cmd-T" : "Ctrl-T";
                 expect(called).toBeFalse();
-                expect(keymap["Ctrl-2"].commandID).toEqual("file.openFolder");
+                expect(keymap["Ctrl-2"].commandID).toEqual("file.newFile");
                 expect(keymap["Alt-Cmd-O"]).toBeFalsy();
                 expect(keymap["Alt-Ctrl-O"]).toBeFalsy();
 
@@ -708,7 +691,7 @@ define(function (require, exports, module) {
 
                 var keymap = KeyBindingManager.getKeymap(),
                     reassignedKey1 = (platform === "mac") ? "Alt-Cmd-Backspace" : "Ctrl-Alt-Backspace",
-                    reassignedKey2 = (platform === "mac") ? "Alt-Cmd-O" : "Ctrl-Alt-O",
+                    reassignedKey2 = (platform === "mac") ? "Cmd-1" : "Ctrl-1",
                     reassignedKey3 = (platform === "mac") ? "Alt-Cmd-L" : "Ctrl-Alt-L";
 
                 expect(called).toBeFalse();
@@ -718,7 +701,7 @@ define(function (require, exports, module) {
                 expect(keymap[reassignedKey1]).toBeFalsy();
 
                 // Default key binding for "file.openFolder" is restored.
-                expect(keymap[reassignedKey2].commandID).toEqual("file.openFolder");
+                expect(keymap[reassignedKey2].commandID).toEqual("file.newFile");
 
                 expect(keymap["Ctrl-L"].commandID).toEqual("navigate.gotoDefinition");
                 expect(keymap[reassignedKey3]).toBeFalsy();
@@ -759,8 +742,8 @@ define(function (require, exports, module) {
             }
 
             it("should mark commands as processed even if command execution failed for unswallowed commands", function () {
-                _testCommandProcessed("Ctrl-P", new $.Deferred().reject(), true);
-                _testCommandProcessed("Ctrl-P", new $.Deferred().resolve(), true);
+                _testCommandProcessed("Ctrl-Alt-Shift-P", new $.Deferred().reject(), true);
+                _testCommandProcessed("Ctrl-Alt-Shift-P", new $.Deferred().resolve(), true);
             });
 
             it("should not mark commands as processed if command execution failed for keys A-Z 0-9", function () {
@@ -826,6 +809,7 @@ define(function (require, exports, module) {
                 return {
                     ctrlKey: true,
                     altKey: true,
+                    key: "1",
                     keyCode: "1".charCodeAt(0),
                     code: "Digit1",
                     immediatePropagationStopped: false,
@@ -970,6 +954,7 @@ define(function (require, exports, module) {
                 return {
                     ctrlKey: true,
                     keyCode: "A".charCodeAt(0),
+                    key: "A",
                     code: "KeyA",
                     immediatePropagationStopped: false,
                     propagationStopped: false,

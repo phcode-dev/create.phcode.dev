@@ -35,6 +35,7 @@ define(function main(require, exports, module) {
     const Commands            = require("command/Commands"),
         AppInit             = require("utils/AppInit"),
         MultiBrowserLiveDev = require("LiveDevelopment/LiveDevMultiBrowser"),
+        LivePreviewTransport  = require("LiveDevelopment/MultiBrowserImpl/transports/LivePreviewTransport"),
         CommandManager      = require("command/CommandManager"),
         PreferencesManager  = require("preferences/PreferencesManager"),
         UrlParams           = require("utils/UrlParams").UrlParams,
@@ -126,14 +127,11 @@ define(function main(require, exports, module) {
     }
 
     function closeLivePreview() {
-        if (MultiBrowserLiveDev.status >= MultiBrowserLiveDev.STATUS_ACTIVE) {
-            MultiBrowserLiveDev.close();
-        }
+        MultiBrowserLiveDev.close();
     }
 
     function openLivePreview() {
-        if (MultiBrowserLiveDev.status <= MultiBrowserLiveDev.STATUS_INACTIVE
-            && !Phoenix.isTestWindow) {
+        if (!Phoenix.isTestWindow) {
             MultiBrowserLiveDev.open();
         }
     }
@@ -146,8 +144,12 @@ define(function main(require, exports, module) {
         return MultiBrowserLiveDev.status === MultiBrowserLiveDev.STATUS_ACTIVE;
     }
 
-    function setLivePreviewPinned(urlPinned) {
-        MultiBrowserLiveDev.setLivePreviewPinned(urlPinned);
+    function setLivePreviewPinned(urlPinned, currentPinnedFilePath) {
+        MultiBrowserLiveDev.setLivePreviewPinned(urlPinned, currentPinnedFilePath);
+    }
+
+    function setLivePreviewTransportBridge(transportBridge) {
+        LivePreviewTransport.setLivePreviewTransportBridge(transportBridge);
     }
 
     /** Called on status change */
@@ -214,7 +216,7 @@ define(function main(require, exports, module) {
         exports.trigger(EVENT_LIVE_HIGHLIGHT_PREF_CHANGED, config.highlight);
     }
 
-    function _handlePreviewHighlightCommand() {
+    function togglePreviewHighlight() {
         config.highlight = !config.highlight;
         _updateHighlightCheckmark();
         if (config.highlight) {
@@ -222,7 +224,7 @@ define(function main(require, exports, module) {
         } else {
             MultiBrowserLiveDev.hideHighlight();
         }
-        PreferencesManager.setViewState("livedev.highlight", config.highlight);
+        PreferencesManager.setViewState("livedevHighlight", config.highlight);
     }
 
     /** Setup window references to useful LiveDevelopment modules */
@@ -287,20 +289,23 @@ define(function main(require, exports, module) {
         MultiBrowserLiveDev.on(MultiBrowserLiveDev.EVENT_LIVE_PREVIEW_CLICKED, function (_event, clickDetails) {
             exports.trigger(exports.EVENT_LIVE_PREVIEW_CLICKED, clickDetails);
         });
+        MultiBrowserLiveDev.on(MultiBrowserLiveDev.EVENT_LIVE_PREVIEW_RELOAD, function (_event, clientDetails) {
+            exports.trigger(exports.EVENT_LIVE_PREVIEW_RELOAD, clientDetails);
+        });
 
     });
 
     // init prefs
-    PreferencesManager.stateManager.definePreference("livedev.highlight", "boolean", true)
+    PreferencesManager.stateManager.definePreference("livedevHighlight", "boolean", true)
         .on("change", function () {
-            config.highlight = PreferencesManager.getViewState("livedev.highlight");
+            config.highlight = PreferencesManager.getViewState("livedevHighlight");
             _updateHighlightCheckmark();
         });
 
-    config.highlight = PreferencesManager.getViewState("livedev.highlight");
+    config.highlight = PreferencesManager.getViewState("livedevHighlight");
 
     // init commands
-    CommandManager.register(Strings.CMD_LIVE_HIGHLIGHT, Commands.FILE_LIVE_HIGHLIGHT, _handlePreviewHighlightCommand);
+    CommandManager.register(Strings.CMD_LIVE_HIGHLIGHT, Commands.FILE_LIVE_HIGHLIGHT, togglePreviewHighlight);
     CommandManager.register(Strings.CMD_RELOAD_LIVE_PREVIEW, Commands.CMD_RELOAD_LIVE_PREVIEW, _handleReloadLivePreviewCommand);
 
     CommandManager.get(Commands.FILE_LIVE_HIGHLIGHT).setEnabled(false);
@@ -311,6 +316,7 @@ define(function main(require, exports, module) {
     exports.EVENT_OPEN_PREVIEW_URL = MultiBrowserLiveDev.EVENT_OPEN_PREVIEW_URL;
     exports.EVENT_CONNECTION_CLOSE = MultiBrowserLiveDev.EVENT_CONNECTION_CLOSE;
     exports.EVENT_LIVE_PREVIEW_CLICKED = MultiBrowserLiveDev.EVENT_LIVE_PREVIEW_CLICKED;
+    exports.EVENT_LIVE_PREVIEW_RELOAD = MultiBrowserLiveDev.EVENT_LIVE_PREVIEW_RELOAD;
     exports.EVENT_LIVE_HIGHLIGHT_PREF_CHANGED = EVENT_LIVE_HIGHLIGHT_PREF_CHANGED;
 
     // Export public functions
@@ -319,6 +325,8 @@ define(function main(require, exports, module) {
     exports.isInactive = isInactive;
     exports.isActive = isActive;
     exports.setLivePreviewPinned = setLivePreviewPinned;
+    exports.setLivePreviewTransportBridge = setLivePreviewTransportBridge;
+    exports.togglePreviewHighlight = togglePreviewHighlight;
     exports.getConnectionIds = MultiBrowserLiveDev.getConnectionIds;
     exports.getLivePreviewDetails = MultiBrowserLiveDev.getLivePreviewDetails;
 });

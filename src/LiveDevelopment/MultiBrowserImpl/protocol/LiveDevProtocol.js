@@ -47,13 +47,16 @@ define(function (require, exports, module) {
         RemoteFunctions       = require("text!LiveDevelopment/BrowserScripts/RemoteFunctions.js"),
         EditorManager         = require("editor/EditorManager"),
         LiveDevMultiBrowser   = require("LiveDevelopment/LiveDevMultiBrowser"),
+        PreferencesManager  = require("preferences/PreferencesManager"),
         HTMLInstrumentation   = require("LiveDevelopment/MultiBrowserImpl/language/HTMLInstrumentation"),
+        StringUtils = require("utils/StringUtils"),
         FileViewController    = require("project/FileViewController");
 
-    const LIVE_DEV_REMOTE_SCRIPTS_FILE_NAME = "phoenix_live_preview_scripts_instrumented_345Tt96G4.js";
-    const LIVE_DEV_REMOTE_WORKER_SCRIPTS_FILE_NAME = "pageLoaderWorker_345Tt96G4.js";
+    const LIVE_DEV_REMOTE_SCRIPTS_FILE_NAME = `phoenix_live_preview_scripts_instrumented_${StringUtils.randomString(8)}.js`;
+    const LIVE_DEV_REMOTE_WORKER_SCRIPTS_FILE_NAME = `pageLoaderWorker_${StringUtils.randomString(8)}.js`;
 
-    const EVENT_LIVE_PREVIEW_CLICKED = "livePreviewClicked";
+    const EVENT_LIVE_PREVIEW_CLICKED = "livePreviewClicked",
+        EVENT_LIVE_PREVIEW_RELOAD = "livePreviewReload";
 
     /**
      * @private
@@ -91,7 +94,25 @@ define(function (require, exports, module) {
         return Object.keys(_connections);
     }
 
-    function _tagSelectedInLivePreview(tagId) {
+    /**
+     * When user clicks on text boxes or other focusable keyboard elements in live preview, we should not
+     * set focus to editor
+     * @private
+     */
+    function _focusEditorIfNeeded(editor, tagName, contentEditable) {
+        const focusShouldBeInLivePreview = ['INPUT', 'TEXTAREA'].includes(tagName) || contentEditable;
+        if(focusShouldBeInLivePreview){
+            return;
+        }
+        editor.focus();
+    }
+
+    function _tagSelectedInLivePreview(tagId, nodeName, contentEditable) {
+        const highlightPref = PreferencesManager.getViewState("livedevHighlight");
+        if(!highlightPref){
+            // live preview highlight and reverse highlight feature is disabled
+            return;
+        }
         const liveDoc = LiveDevMultiBrowser.getCurrentLiveDoc(),
             editor = EditorManager.getActiveEditor();
         const liveDocPath = liveDoc ? liveDoc.doc.file.fullPath : null,
@@ -106,12 +127,14 @@ define(function (require, exports, module) {
             if(position &&
                 activeEditor && activeEditor.document.file.fullPath === activeFullEditor.document.file.fullPath) {
                 activeEditor.setCursorPos(position.line, position.ch, true);
+                _focusEditorIfNeeded(activeEditor, nodeName, contentEditable);
             }
             if(position && activeFullEditor) {
                 activeFullEditor.setCursorPos(position.line, position.ch, true);
+                _focusEditorIfNeeded(activeFullEditor, nodeName, contentEditable);
             }
         }
-        if(liveDocPath !== activeEditorDocPath) {
+        if(liveDocPath && liveDocPath !== activeEditorDocPath) {
             FileViewController.openAndSelectDocument(liveDocPath, FileViewController.PROJECT_MANAGER)
                 .done(selectInActiveDocument);
         } else {
@@ -145,7 +168,7 @@ define(function (require, exports, module) {
                 }
             }
         } else if (msg.clicked && msg.tagId) {
-            _tagSelectedInLivePreview(msg.tagId);
+            _tagSelectedInLivePreview(msg.tagId, msg.nodeName, msg.contentEditable);
             exports.trigger(EVENT_LIVE_PREVIEW_CLICKED, msg);
         } else {
             // enrich received message with clientId
@@ -200,6 +223,9 @@ define(function (require, exports, module) {
      * @param {number} clientId
      */
     function _close(clientId) {
+        if(!_connections[clientId]){
+            return;
+        }
         delete _connections[clientId];
         exports.trigger("ConnectionClose", {
             clientId: clientId
@@ -341,30 +367,12 @@ define(function (require, exports, module) {
      *      to the method.
      */
     function reload(ignoreCache, clients) {
+        exports.trigger(EVENT_LIVE_PREVIEW_RELOAD, clients);
         return _send(
             {
                 method: "Page.reload",
                 params: {
                     ignoreCache: true
-                }
-            },
-            clients
-        );
-    }
-
-    /**
-     * Protocol method. Navigates current page to the given URL.
-     * @param {number|Array.<number>} clients A client ID or array of client IDs that should navigate to the given URL.
-     * @param {string} url URL to navigate the page to.
-     * @return {$.Promise} A promise that's resolved with the return value from the first client that responds
-     *      to the method.
-     */
-    function navigate(url, clients) {
-        return _send(
-            {
-                method: "Page.navigate",
-                params: {
-                    url: url
                 }
             },
             clients
@@ -396,11 +404,11 @@ define(function (require, exports, module) {
     exports.setStylesheetText = setStylesheetText;
     exports.getStylesheetText = getStylesheetText;
     exports.reload = reload;
-    exports.navigate = navigate;
     exports.close = close;
     exports.getConnectionIds = getConnectionIds;
     exports.closeAllConnections = closeAllConnections;
     exports.LIVE_DEV_REMOTE_SCRIPTS_FILE_NAME = LIVE_DEV_REMOTE_SCRIPTS_FILE_NAME;
     exports.LIVE_DEV_REMOTE_WORKER_SCRIPTS_FILE_NAME = LIVE_DEV_REMOTE_WORKER_SCRIPTS_FILE_NAME;
     exports.EVENT_LIVE_PREVIEW_CLICKED = EVENT_LIVE_PREVIEW_CLICKED;
+    exports.EVENT_LIVE_PREVIEW_RELOAD = EVENT_LIVE_PREVIEW_RELOAD;
 });

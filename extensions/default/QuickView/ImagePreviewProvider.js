@@ -41,7 +41,7 @@ define(function (require, exports, module) {
         extensionlessImagePreview;           // Whether to try and preview extensionless URLs
 
     // List of protocols which we will support for image preview urls
-    let validProtocols = ["data:", "http:", "https:", "ftp:", "file:"];
+    let validProtocols = ["data:", "http:", "https:", "phtauri:", "asset:", "ftp:", "file:"];
 
     prefs = PreferencesManager.getExtensionPrefs("quickview");
 
@@ -51,6 +51,18 @@ define(function (require, exports, module) {
         description: Strings.DESCRIPTION_EXTENSION_LESS_IMAGE_PREVIEW
     });
 
+
+    function _transformToIframePath(url) {
+        if(url && url.startsWith("https://www.youtube.com/watch?")){
+            // YouTube special handling- try to play the embedded link for YouTube videos.
+            const utube = new URL(url);
+            const vidLink = utube.searchParams.get("v");
+            if(vidLink) {
+                return `https://www.youtube.com/embed/${vidLink}`;
+            }
+        }
+        return url;
+    }
 
     // Image preview provider -------------------------------------------------
 
@@ -131,7 +143,7 @@ define(function (require, exports, module) {
                 "</div></div>");
 
             function _tryLoadingURLInIframe() {
-                let $iframe = $(`<iframe class='image-preview' src="${imgPath}">`);
+                let $iframe = $(`<iframe class='image-preview' src="${_transformToIframePath(imgPath)}">`);
                 $imgPreview.find(".image-preview").append($iframe);
             }
 

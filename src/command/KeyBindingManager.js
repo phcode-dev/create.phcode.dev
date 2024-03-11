@@ -41,15 +41,25 @@ define(function (require, exports, module) {
         FileUtils           = require("file/FileUtils"),
         KeyEvent            = require("utils/KeyEvent"),
         Strings             = require("strings"),
+        Keys                = require("command/Keys"),
+        KeyboardOverlayMode = require("command/KeyboardOverlayMode"),
         StringUtils         = require("utils/StringUtils"),
         Metrics             = require("utils/Metrics"),
+        Dialogs                 = require("widgets/Dialogs"),
+        Mustache            = require("thirdparty/mustache/mustache"),
         UrlParams           = require("utils/UrlParams").UrlParams,
         _                   = require("thirdparty/lodash");
 
     let KeyboardPrefs       = JSON.parse(require("text!base-config/keyboard.json"));
+    let KeyboardDialogTemplate = require("text!./ChangeShortcutTemplate.html");
 
     let KEYMAP_FILENAME     = "keymap.json",
         _userKeyMapFilePath = path.normalize(brackets.app.getApplicationSupportDirectory() + "/" + KEYMAP_FILENAME);
+
+    const EVENT_KEY_BINDING_ADDED = "keyBindingAdded",
+        EVENT_KEY_BINDING_REMOVED = "keyBindingRemoved";
+
+    const KEY = Keys.KEY;
 
     /**
      * @private
@@ -429,6 +439,54 @@ define(function (require, exports, module) {
         return _buildKeyDescriptor(hasMacCtrl, hasCtrl, hasAlt, hasShift, key);
     }
 
+    function _mapKeycodeToKeyLegacy(keycode) {
+        // https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
+        // keycode is deprecated. We only use this in one edge case in mac listed in the caller.
+        // If keycode represents one of the digit keys (0-9), then return the corresponding digit
+        // by subtracting KeyEvent.DOM_VK_0 from keycode. ie. [48-57] --> [0-9]
+        if ((keycode >= KeyEvent.DOM_VK_0 && keycode <= KeyEvent.DOM_VK_9) ||
+            (keycode >= KeyEvent.DOM_VK_A && keycode <= KeyEvent.DOM_VK_Z)){
+            return String.fromCharCode(keycode);
+            // Do the same with the numpad numbers
+            // by subtracting KeyEvent.DOM_VK_NUMPAD0 from keycode. ie. [96-105] --> [0-9]
+        } else if (keycode >= KeyEvent.DOM_VK_NUMPAD0 && keycode <= KeyEvent.DOM_VK_NUMPAD9) {
+            return String.fromCharCode(keycode - KeyEvent.DOM_VK_NUMPAD0 + KeyEvent.DOM_VK_0);
+        }
+
+
+        switch (keycode) {
+        case KeyEvent.DOM_VK_SEMICOLON:
+            return ";";
+        case KeyEvent.DOM_VK_EQUALS:
+            return "=";
+        case KeyEvent.DOM_VK_COMMA:
+            return ",";
+        case KeyEvent.DOM_VK_SUBTRACT:
+        case KeyEvent.DOM_VK_DASH:
+            return "-";
+        case KeyEvent.DOM_VK_ADD:
+            return "+";
+        case KeyEvent.DOM_VK_DECIMAL:
+        case KeyEvent.DOM_VK_PERIOD:
+            return ".";
+        case KeyEvent.DOM_VK_DIVIDE:
+        case KeyEvent.DOM_VK_SLASH:
+            return "/";
+        case KeyEvent.DOM_VK_BACK_QUOTE:
+            return "`";
+        case KeyEvent.DOM_VK_OPEN_BRACKET:
+            return "[";
+        case KeyEvent.DOM_VK_BACK_SLASH:
+            return "\\";
+        case KeyEvent.DOM_VK_CLOSE_BRACKET:
+            return "]";
+        case KeyEvent.DOM_VK_QUOTE:
+            return "'";
+        default:
+            return null;
+        }
+    }
+
     /**
      * @private
      * Looks for keycodes that have os-inconsistent keys and fixes them.
@@ -436,53 +494,27 @@ define(function (require, exports, module) {
      **/
     function _mapKeycodeToKey(event) {
         // key code mapping https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_code_values
-        const code = event.code;
+        if((event.ctrlKey || event.metaKey) && event.altKey && brackets.platform === "mac"){
+            // in mac, Cmd-alt-<shift?>-key are valid. But alt-key will trigger international keyboard typing and
+            // hence instead of Cmd-Alt-O, mac will get event Cmd-alt-Φ which is not what we want. So we will
+            // fallback to the deprecated keyCode event in the case
+            const key = _mapKeycodeToKeyLegacy(event.keyCode);
+            if(key){
+                return key;
+            }
+        }
+        const key = event.key;
         let codes = {
-            "Tab": "Tab",
-            "Space": "Space",
-            "Backspace": "Backspace",
-            "Insert": "Insert",
-            "Delete": "Delete",
             "ArrowUp": "Up",
             "ArrowDown": "Down",
             "ArrowLeft": "Left",
             "ArrowRight": "Right",
-            "Semicolon": ";",
-            "Equal": "=",
-            "Add": "+", // Eg. Numpad Add button NumpadAdd
-            "Comma": ",",
-            "Minus": "-",
-            "Period": ".",
-            "Decimal": ".", // NumpadDecimal
-            "Slash": "/",
-            "Divide": "/", //NumpadDivide
-            "Quote": "'",
-            "Backquote": "`",
-            "BracketLeft": "[",
-            "BracketRight": "]",
-            "Backslash": "\\"
+            " ": "Space"
         };
-        let strippedCode;
-        // event.code should be there in all browsers post 2014. But some older browsers don't, so the check `code &&`
-        if(code && code.startsWith("Key")){
-            strippedCode = code.replace("Key", "");
-            return codes[strippedCode] || strippedCode;
+        if(codes[key]){
+            return codes[key];
         }
-        if(code && code.startsWith("Digit")){
-            strippedCode = code.replace("Digit", "");
-            return codes[strippedCode] || strippedCode;
-        }
-        if(code && code.startsWith("Numpad")){
-            // this can either be a simple numpad digit like 'Numpad0'(we should return 0)
-            // or 'NumpadAdd'(for which we should return the mapped + button)
-            strippedCode = code.replace("Numpad", "");
-            return codes[strippedCode] || strippedCode;
-        }
-        if(codes[code]){
-            return codes[code];
-        }
-        // This is pretty much all the keys in a keyboard we usually encounter. If still no match, return key as is
-        return event.key;
+        return key;
     }
 
     /**
@@ -569,7 +601,7 @@ define(function (require, exports, module) {
                 });
 
                 if (command) {
-                    command.trigger("keyBindingRemoved", {key: normalizedKey, displayKey: binding.displayKey});
+                    command.trigger(EVENT_KEY_BINDING_REMOVED, {key: normalizedKey, displayKey: binding.displayKey});
                 }
             }
         }
@@ -603,15 +635,16 @@ define(function (require, exports, module) {
      *
      * @param {string} commandID
      * @param {string|{{key: string, displayKey: string}}} keyBinding - a single shortcut.
-     * @param {?string} platform
+     * @param {string?} platform
      *     - "all" indicates all platforms, not overridable
      *     - undefined indicates all platforms, overridden by platform-specific binding
-     * @param {boolean=} userBindings true if adding a user key binding or undefined otherwise.
+     * @param {boolean?} userBindings true if adding a user key binding or undefined otherwise.
+     * @param {boolean?} isMenuShortcut
      * @return {?{key: string, displayKey:String}} Returns a record for valid key bindings.
      *     Returns null when key binding platform does not match, binding does not normalize,
      *     or is already assigned.
      */
-    function _addBinding(commandID, keyBinding, platform, userBindings) {
+    function _addBinding(commandID, keyBinding, {platform, userBindings, isMenuShortcut}) {
         let key,
             result = null,
             normalized,
@@ -649,9 +682,21 @@ define(function (require, exports, module) {
 
         // skip if the key binding is invalid
         if (!normalized) {
-            console.error("Unable to parse key binding " + key + ". Permitted modifiers: Ctrl, Cmd, Alt, Opt, Shift; separated by '-' (not '+').");
+            console.error(`Unable to parse key binding '${key}' for command '${commandID}'. Permitted modifiers: Ctrl, Cmd, Alt, Opt, Shift; separated by '-' (not '+').`);
             return null;
         }
+        function isSingleCharAZ(str) {
+            return /^[A-Z]$/i.test(str);
+        }
+        const keySplit = normalized.split("-");
+        if(!isMenuShortcut && ((keySplit.length ===2 && keySplit[0] === 'Alt' && isSingleCharAZ(keySplit[1])) ||
+            (keySplit.length ===3 && keySplit[0] === 'Alt' && keySplit[1] === 'Shift' && isSingleCharAZ(keySplit[2])))){
+            console.error(`Key binding '${normalized}' for command '${commandID}' may cause issues. The key combinations starting with 'Alt-<letter>' and 'Alt-Shift-<letter>' are reserved. On macOS, they are used for AltGr internationalization, and on Windows/Linux, they are used for menu navigation shortcuts. If this is a menu shortcut, use 'isMenuShortcut' option.`);
+        }
+        // ctrl-alt-<key> events are allowed in all platforms. In windows ctrl-alt-<key> events are treated as altGr
+        // and used for international keyboards. But we have special handling for detecting alt gr key press that
+        // accounts for this and disables keybinding manager inwindows on detecting altGr key press.
+        // See _detectAltGrKeyDown function in this file.
 
         // check for duplicate key bindings
         existing = _keyMap[normalized];
@@ -763,7 +808,7 @@ define(function (require, exports, module) {
         command = CommandManager.get(commandID);
 
         if (command) {
-            command.trigger("keyBindingAdded", result);
+            command.trigger(EVENT_KEY_BINDING_ADDED, result, commandID);
         }
 
         return result;
@@ -870,12 +915,15 @@ define(function (require, exports, module) {
      *     "mac", "win" or "linux". If undefined, all platforms not explicitly
      *     defined will use the key binding.
      *     NOTE: If platform is not specified, Ctrl will be replaced by Cmd for "mac" platform
+     * @param {object?} options
+     * @param {boolean?} options.isMenuShortcut this allows alt-key shortcuts to be registered.
      * @return {{key: string, displayKey:String}|Array.<{key: string, displayKey:String}>}
      *     Returns record(s) for valid key binding(s)
      */
-    function addBinding(command, keyBindings, platform) {
+    function addBinding(command, keyBindings, platform, options={}) {
         let commandID = "",
-            results;
+            results,
+            isMenuShortcut = options.isMenuShortcut;
 
         if (!command) {
             console.error("addBinding(): missing required parameter: command");
@@ -899,19 +947,24 @@ define(function (require, exports, module) {
 
             keyBindings.forEach(function addSingleBinding(keyBindingRequest) {
                 // attempt to add keybinding
-                keyBinding = _addBinding(commandID, keyBindingRequest, keyBindingRequest.platform);
+                keyBinding = _addBinding(commandID, keyBindingRequest, {
+                    platform: keyBindingRequest.platform,
+                    isMenuShortcut: isMenuShortcut
+                });
 
                 if (keyBinding) {
                     results.push(keyBinding);
                 }
             });
         } else {
-            results = _addBinding(commandID, keyBindings, platform);
+            results = _addBinding(commandID, keyBindings, {
+                platform: platform,
+                isMenuShortcut: isMenuShortcut
+            });
         }
 
         return results;
     }
-
     /**
      * Retrieve key bindings currently associated with a command
      *
@@ -938,6 +991,24 @@ define(function (require, exports, module) {
     }
 
     /**
+     * Retrieves the platform-specific string representation of the key bindings for a specified command.
+     * This function is useful for displaying the keyboard shortcut associated with a given command ID to the user.
+     * If a key binding is found for the command, it returns the formatted key descriptor. Otherwise, it returns null.
+     *
+     * @param {string} commandID - The unique identifier of the command for which the key binding is to be retrieved.
+     * @returns {string|null} The formatted key binding as a string if available; otherwise, null.
+     */
+    function getKeyBindingsDisplay(commandID) {
+        let shortCut = getKeyBindings(commandID);
+        if (shortCut && shortCut[0] && shortCut[0].displayKey) {
+            return formatKeyDescriptor(shortCut[0].displayKey);
+        }
+        return null;
+    }
+
+
+    const _handledCommands = {};
+    /**
      * Adds default key bindings when commands are registered to CommandManager
      * @param {$.Event} event jQuery event
      * @param {Command} command Newly registered command
@@ -947,7 +1018,18 @@ define(function (require, exports, module) {
             defaults    = KeyboardPrefs[commandId];
 
         if (defaults) {
+            _handledCommands[commandId] = true;
             addBinding(commandId, defaults);
+        }
+    }
+
+    function _initDefaultShortcuts() {
+        for(let commandId of _allCommands){
+            let defaults    = KeyboardPrefs[commandId];
+
+            if (defaults && !_handledCommands[commandId]) {
+                addBinding(commandId, defaults);
+            }
         }
     }
 
@@ -966,7 +1048,8 @@ define(function (require, exports, module) {
      * as usual.
      *
      * Multiple keydown hooks can be registered, and are executed in order,
-     * most-recently-added first.
+     * most-recently-added first. A keydown hook will only be added once if the same
+     * hook is already added before.
      *
      * (We have to have a special API for this because (1) handlers are normally
      * called in least-recently-added order, and we want most-recently-added;
@@ -978,6 +1061,10 @@ define(function (require, exports, module) {
      * @param {function(Event): boolean} hook The global hook to add.
      */
     function addGlobalKeydownHook(hook) {
+        let index = _globalKeydownHooks.indexOf(hook);
+        if (index !== -1) {
+            return;
+        }
         _globalKeydownHooks.push(hook);
     }
 
@@ -994,12 +1081,92 @@ define(function (require, exports, module) {
         }
     }
 
+    let lastKeyPressTime = 0; // Store the time of the last key press
+    let pressCount = 0; // Counter for consecutive Control key presses
+    const doublePressInterval = 500; // Maximum time interval between presses, in milliseconds, to consider it a double press
+    const ctrlKeyCodes = {
+        ControlLeft: true,
+        ControlRight: true,
+        MetaLeft: true,
+        MetaRight: true,
+        Control: true,
+        Meta: true
+    };
+    function _detectDoubleCtrlKeyPress(event) {
+        if (ctrlKeyCodes[event.code] && ctrlKeyCodes[event.key] && !event.shiftKey && !event.altKey) {
+            const currentTime = new Date().getTime(); // Get the current time
+            pressCount++;
+            if (currentTime - lastKeyPressTime <= doublePressInterval) {
+                if(pressCount === 2) {
+                    KeyboardOverlayMode.startOverlayMode();
+                    event.stopPropagation();
+                    event.preventDefault();
+                    return true;
+                }
+                // ignore all higher order press events like triple/quadruple press
+            } else {
+                pressCount = 1;
+            }
+            lastKeyPressTime = currentTime;
+        }
+    }
+
+    const dontHideMouseOnKeys = {
+        "Escape": true,
+        "ArrowLeft": true,
+        "ArrowRight": true,
+        "ArrowUp": true,
+        "ArrowDown": true,
+        "Home": true,
+        "End": true,
+        "PageUp": true,
+        "PageDown": true,
+        "Shift": true,
+        "Control": true,
+        "Alt": true,
+        "Meta": true,
+        "F1": true,
+        "F2": true,
+        "F3": true,
+        "F4": true,
+        "F5": true,
+        "F6": true,
+        "F7": true,
+        "F8": true,
+        "F9": true,
+        "F10": true,
+        "F11": true,
+        "F12": true,
+        "Insert": true,
+        "ContextMenu": true,
+        "NumLock": true,
+        "ScrollLock": true,
+        "CapsLock": true
+    };
+    let mouseCursorHidden = false;
+    function _hideMouseCursonOnTyping(event) {
+        if(dontHideMouseOnKeys[event.key] || mouseCursorHidden){
+            return;
+        }
+        mouseCursorHidden = true;
+        if(!Phoenix.isSpecRunnerWindow){
+            document.body.classList.add('hide-cursor');
+        }
+    }
+    
     /**
      * Handles a given keydown event, checking global hooks first before
      * deciding to handle it ourselves.
-     * @param {Event} The keydown event to handle.
+     * @param {Event} event The keydown event to handle.
      */
     function _handleKeyEvent(event) {
+        _hideMouseCursonOnTyping(event);
+        if(KeyboardOverlayMode.isInOverlayMode()){
+            return KeyboardOverlayMode.processOverlayKeyboardEvent(event);
+        }
+        if(_detectDoubleCtrlKeyPress(event)){
+            return true;
+        }
         let i, handled = false;
         for (i = _globalKeydownHooks.length - 1; i >= 0; i--) {
             if (_globalKeydownHooks[i](event)) {
@@ -1008,7 +1175,11 @@ define(function (require, exports, module) {
             }
         }
         _detectAltGrKeyDown(event);
-        if (!handled && _handleKey(_translateKeyboardEvent(event))) {
+        const shortcut = _translateKeyboardEvent(event);
+        if(keyboardShortcutCaptureInProgress) {
+            return updateShortcutSelection(event, shortcut);
+        }
+        if (!handled && _handleKey(shortcut)) {
             event.stopPropagation();
             event.preventDefault();
         }
@@ -1021,6 +1192,13 @@ define(function (require, exports, module) {
             _handleKeyEvent,
             true
         );
+        document.body.addEventListener('mousemove', ()=>{
+            if(!mouseCursorHidden){
+                return;
+            }
+            mouseCursorHidden = false;
+            document.body.classList.remove('hide-cursor');
+        });
 
         exports.useWindowsCompatibleBindings = (brackets.platform !== "mac") &&
             (brackets.platform !== "win");
@@ -1219,7 +1397,10 @@ define(function (require, exports, module) {
                         let keybinding = { key: normalizedKey };
 
                         keybinding.displayKey = _getDisplayKey(normalizedKey);
-                        _addBinding(commandID, keybinding.displayKey ? keybinding : normalizedKey, brackets.platform, true);
+                        _addBinding(commandID, keybinding.displayKey ? keybinding : normalizedKey, {
+                            platform: brackets.platform,
+                            userBindings: true
+                        });
                         remappedCommands.push(commandID);
                     } else {
                         multipleKeys.push(commandID);
@@ -1315,6 +1496,36 @@ define(function (require, exports, module) {
         return _userKeyMapFilePath;
     }
 
+    async function _addToUserKeymapFile(shortcut, commandID) {
+        let file   = FileSystem.getFileForPath(_getUserKeyMapFilePath());
+        let userKeyMap = {overrides:{}};
+        let keyMapExists = await Phoenix.VFS.existsAsync(file.fullPath);
+        if (keyMapExists) {
+            const text = await deferredToPromise(FileUtils.readAsText(file, true));
+            try {
+                if (text) {
+                    userKeyMap = JSON.parse(text);
+                    const overrides = userKeyMap.overrides || {};
+                    // check if the same command is already assigned a shortcut, then remove before we add
+                    // a new shortcut
+                    for(let shortcutKey of Object.keys(overrides)) {
+                        if(overrides[shortcutKey] === commandID){
+                            delete overrides[shortcutKey];
+                        }
+                    }
+                }
+            } catch (err) {
+                // Cannot parse the text read from the key map file.
+                console.error("Error reading ", _getUserKeyMapFilePath(), err);
+                return;
+            }
+        }
+        userKeyMap.overrides[shortcut] = commandID;
+        const textContent = JSON.stringify(userKeyMap, null, 4);
+        await deferredToPromise(FileUtils.writeText(file, textContent, true));
+        _loadUserKeyMap();
+    }
+
     /**
      * @private
      *
@@ -1334,7 +1545,7 @@ define(function (require, exports, module) {
 
         file.exists(function (err, doesExist) {
             if (doesExist) {
-                FileUtils.readAsText(file)
+                FileUtils.readAsText(file, true)
                     .done(function (text) {
                         let keyMap = {};
                         try {
@@ -1375,22 +1586,50 @@ define(function (require, exports, module) {
      * by 200 ms. The delay is required because when this function is called some
      * extensions may still be adding some commands and their key bindings asychronously.
      */
-    _loadUserKeyMap = _.debounce(function () {
-        _readUserKeyMap()
-            .then(function (keyMap) {
-                // Some extensions may add a new command without any key binding. So
-                // we always have to get all commands again to ensure that we also have
-                // those from any extensions installed during the current session.
-                _allCommands = CommandManager.getAll();
+    _loadUserKeyMap = _.debounce(_loadUserKeyMapImmediate, 200);
 
-                _customKeyMapCache = _.cloneDeep(_customKeyMap);
-                _customKeyMap = keyMap;
-                _undoPriorUserKeyBindings();
-                _applyUserKeyBindings();
-            }, function (err) {
-                _showErrorsAndOpenKeyMap(err);
-            });
-    }, 200);
+    function _loadUserKeyMapImmediate() {
+        return new Promise((resolve, reject)=>{
+            _readUserKeyMap()
+                .then(function (keyMap) {
+                    // Some extensions may add a new command without any key binding. So
+                    // we always have to get all commands again to ensure that we also have
+                    // those from any extensions installed during the current session.
+                    _allCommands = CommandManager.getAll();
+
+                    _customKeyMapCache = _.cloneDeep(_customKeyMap);
+                    _customKeyMap = keyMap;
+                    _undoPriorUserKeyBindings();
+                    _applyUserKeyBindings();
+                    resolve();
+                }, function (err) {
+                    _showErrorsAndOpenKeyMap(err);
+                    console.error(err);
+                    // we always resolve here as the event is handled
+                    resolve();
+                });
+        });
+    };
+
+    /**
+     * resets all user defined shortcuts
+     * @return {Promise|Promise<void>|*}
+     */
+    function resetUserShortcutsAsync() {
+        return new Promise((resolve, reject)=>{
+            let userKeyMapPath = _getUserKeyMapFilePath(),
+                file = FileSystem.getFileForPath(userKeyMapPath);
+            let defaultContent = "{\n    \"documentation\": \"https://github.com/phcode-dev/phoenix/wiki/User-%60keymap.json%60\"," +
+                "\n    \"overrides\": {" +
+                "\n        \n    }\n}\n";
+
+            return FileUtils.writeText(file, defaultContent, true).done(()=>{
+                _loadUserKeyMapImmediate()
+                    .then(resolve)
+                    .catch(reject);
+            }).fail(reject);
+        });
+    }
 
     /**
      * @private
@@ -1405,14 +1644,9 @@ define(function (require, exports, module) {
             if (doesExist) {
                 CommandManager.execute(Commands.FILE_OPEN, { fullPath: userKeyMapPath });
             } else {
-                let defaultContent = "{\n    \"documentation\": \"https://github.com/adobe/brackets/wiki/User-Key-Bindings\"," +
-                                     "\n    \"overrides\": {" +
-                                     "\n        \n    }\n}\n";
-
-                FileUtils.writeText(file, defaultContent, true)
-                    .done(function () {
-                        CommandManager.execute(Commands.FILE_OPEN, { fullPath: userKeyMapPath });
-                    });
+                resetUserShortcutsAsync().finally(function () {
+                    CommandManager.execute(Commands.FILE_OPEN, { fullPath: userKeyMapPath });
+                });
             }
         });
     }
@@ -1439,6 +1673,7 @@ define(function (require, exports, module) {
     function _initCommandAndKeyMaps() {
         _allCommands = CommandManager.getAll();
         // Keep a copy of the default key bindings before loading user key bindings.
+        _initDefaultShortcuts();
         _defaultKeyMap = _.cloneDeep(_keyMap);
     }
 
@@ -1465,22 +1700,149 @@ define(function (require, exports, module) {
         _loadUserKeyMap();
     });
 
+    function isInOverlayMode() {
+        return KeyboardOverlayMode.isInOverlayMode();
+    }
+
+    function _isAnAssignableKey(key) {
+        if(!key){
+            return false;
+        }
+        const split = key.split("-");
+        if(split.length === 1 && key.length > 1 && key[0]==='F'){
+            // F1-12
+            return true;
+        } else if(split.length === 2 && split[0] === "Shift" && split[1].length > 1){
+            // Shift - F1-12, shift-PgUp etc... which are allowed
+            return true;
+        } else if(split.length === 2 && split[0] === "Shift" && split[1].length === 1){
+            // Shift-A, Shift-! etc which are upper case chars -not shortcuts. we don't allow that.
+            return false;
+        } else if(key.includes("-")){
+            // allow all compound shortcuts
+            return true;
+        }
+        return false;
+    }
+
+    function updateShortcutSelection(event, key) {
+        if(key && _isAnAssignableKey(key) && normalizeKeyDescriptorString(key)) {
+            let normalizedKey = normalizeKeyDescriptorString(key);
+            capturedShortcut = normalizedKey;
+            let existingBinding = _keyMap[normalizedKey];
+            if (!normalizedKey) {
+                console.error("Failed to normalize " + key);
+            } else if (_isReservedShortcuts(normalizedKey)) {
+                console.log("Cannot assign reserved shortcut: ", normalizedKey);
+            } else if(existingBinding && existingBinding.commandID === keyboardShortcutCaptureInProgress.getID()){
+                // user press the same shortcut that is already assigned to the command
+                keyboardShortcutDialog.close();
+                keyboardShortcutDialog = null;
+                keyboardShortcutCaptureInProgress = null;
+            } else if (existingBinding) {
+                const command = CommandManager.get(existingBinding.commandID);
+                $(".change-shortcut-dialog .message").html(
+                    StringUtils.format(Strings.KEYBOARD_SHORTCUT_CHANGE_DIALOG_DUPLICATE,
+                        key, command.getName(), keyboardShortcutCaptureInProgress.getName()));
+                $(".change-shortcut-dialog .Assign").removeClass("forced-hidden").focus();
+                $(".change-shortcut-dialog .Remove").addClass("forced-hidden");
+            } else {
+                keyboardShortcutDialog.close();
+                keyboardShortcutDialog = null;
+                _addToUserKeymapFile(key, keyboardShortcutCaptureInProgress.getID());
+                keyboardShortcutCaptureInProgress = null;
+            }
+            event.stopPropagation();
+            event.preventDefault();
+        }
+        return true;
+    }
+
+    let keyboardShortcutCaptureInProgress = null,
+        keyboardShortcutDialog = null,
+        capturedShortcut = null;
+    function showShortcutSelectionDialog(command) {
+        Metrics.countEvent(Metrics.EVENT_TYPE.KEYBOARD, 'shortcut', "DialogShown");
+        if(_isSpecialCommand(command.getID())){
+            return;
+        }
+        const panelCommand = CommandManager.get(Commands.HELP_TOGGLE_SHORTCUTS_PANEL);
+        capturedShortcut = null;
+        const keyBindings = getKeyBindings(command);
+        let currentShortcut = Strings.KEYBOARD_SHORTCUT_NONE;
+        if(keyBindings.length){
+            currentShortcut = keyBindings[0].displayKey || keyBindings[0].key;
+            for(let i=1; i<keyBindings.length; i++){
+                currentShortcut = currentShortcut + `, ${keyBindings[i].displayKey || keyBindings[i].key}`;
+            }
+        }
+        keyboardShortcutCaptureInProgress = command;
+        keyboardShortcutDialog = Dialogs.showModalDialogUsingTemplate(Mustache.render(KeyboardDialogTemplate, {
+            Strings: Strings,
+            message: StringUtils.format(Strings.KEYBOARD_SHORTCUT_CHANGE_DIALOG_TEXT, command.getName(), currentShortcut)
+        }));
+        if(currentShortcut === Strings.KEYBOARD_SHORTCUT_NONE){
+            $(".change-shortcut-dialog .Remove").addClass("forced-hidden");
+        }
+        if(panelCommand && panelCommand.getChecked()){
+            $(".change-shortcut-dialog .Show").addClass("forced-hidden");
+        }
+        keyboardShortcutDialog.done((closeReason)=>{
+            if(closeReason === 'remove' && currentShortcut){
+                _addToUserKeymapFile(currentShortcut, null);
+                Metrics.countEvent(Metrics.EVENT_TYPE.KEYBOARD, 'shortcut', "removed");
+            } else if(closeReason === Dialogs.DIALOG_BTN_OK && currentShortcut){
+                _addToUserKeymapFile(capturedShortcut, command.getID());
+                Metrics.countEvent(Metrics.EVENT_TYPE.KEYBOARD, 'shortcut', "changed");
+            } else if(closeReason === 'show'){
+                if(!panelCommand.getChecked()){
+                    panelCommand.execute();
+                }
+            }
+            capturedShortcut = null;
+            keyboardShortcutCaptureInProgress = null;
+            keyboardShortcutDialog = null;
+        });
+    }
+
+    /**
+     * Returns true the given command id can be overriden by user.
+     * @param commandId
+     * @return {boolean}
+     */
+    function canAssignBinding(commandId) {
+        return !_isSpecialCommand(commandId);
+    }
+
     // unit test only
     exports._reset = _reset;
     exports._setUserKeyMapFilePath = _setUserKeyMapFilePath;
+    exports._getUserKeyMapFilePath = _getUserKeyMapFilePath;
     exports._getDisplayKey = _getDisplayKey;
     exports._loadUserKeyMap = _loadUserKeyMap;
+    exports._loadUserKeyMapImmediate = _loadUserKeyMapImmediate;
     exports._initCommandAndKeyMaps = _initCommandAndKeyMaps;
     exports._onCtrlUp = _onCtrlUp;
 
     // Define public API
     exports.getKeymap = getKeymap;
+    exports.canAssignBinding = canAssignBinding;
     exports.addBinding = addBinding;
     exports.removeBinding = removeBinding;
     exports.formatKeyDescriptor = formatKeyDescriptor;
     exports.getKeyBindings = getKeyBindings;
+    exports.getKeyBindingsDisplay = getKeyBindingsDisplay;
     exports.addGlobalKeydownHook = addGlobalKeydownHook;
     exports.removeGlobalKeydownHook = removeGlobalKeydownHook;
+    exports.isInOverlayMode = isInOverlayMode;
+    exports.resetUserShortcutsAsync = resetUserShortcutsAsync;
+    exports.showShortcutSelectionDialog = showShortcutSelectionDialog;
+
+    // public constants
+    exports.KEY = KEY;
+    // public events
+    exports.EVENT_KEY_BINDING_ADDED = EVENT_KEY_BINDING_ADDED;
+    exports.EVENT_KEY_BINDING_REMOVED = EVENT_KEY_BINDING_REMOVED;
 
     /**
      * Use windows-specific bindings if no other are found (e.g. Linux).

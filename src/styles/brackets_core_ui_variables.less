@@ -41,7 +41,7 @@
  */
 
 
-@import "./brackets_core_ui_variables.css";
+@import (less) "./brackets_core_ui_variables.css";
 
 // DEPRECATION WARNING: This file is here for legacy reasons and will be removed as we migrate entirely to css variables
 // this is necessary for extension them-ability.
@@ -91,6 +91,8 @@
 @bc-text-quiet:                 #aaa;
 @bc-text-thin:                  #000;
 @bc-text-thin-quiet:            #777;
+@bc-text-searching:             #d3cd69;
+@bc-text-searching-match:       #f6a644;
 
 // Panel
 @bc-panel-bg:                   #dfe2e2;
@@ -119,6 +121,7 @@
 @bc-primary-btn-bg:             #288edf;
 @bc-primary-btn-bg-down:        #0380e8;
 @bc-primary-btn-border:         #1474bf;
+@bc-primary-btn-border-focused-glow:    #1473e6;
 
 // Secondary Button
 @bc-secondary-btn-bg:           #91cc41;
@@ -214,14 +217,14 @@
 @dark-bc-btn-border-error:           #fa689d;
 @dark-bc-btn-border-error-glow:      transparent;
 @dark-bc-btn-border-focused:         #2893ef;
-@dark-bc-btn-border-focused-glow:    transparent;
+@dark-bc-btn-border-focused-glow:    #94ceff;
 @dark-bc-btn-triangle:               #767676;
 @dark-bc-input-bg:                   #555;
 
 // Primary Button
 @dark-bc-primary-btn-bg:             #016dc4;
 @dark-bc-primary-btn-bg-down:        #00569b;
-@dark-bc-primary-btn-border:         #202020;
+@dark-bc-primary-btn-border:         #1474bf;
 
 // Secondary Button
 @dark-bc-secondary-btn-bg:           #5b9e00;

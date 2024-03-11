@@ -57,16 +57,34 @@ define(function (require, exports, module) {
      * @type {RegExp}
      */
     var _exclusionListRegEx = /\.pyc$|^\.git$|^\.gitmodules$|^\.svn$|^\.DS_Store$|^Icon\r|^Thumbs\.db$|^\.hg$|^CVS$|^\.hgtags$|^\.idea$|^\.c9revisions$|^\.SyncArchive$|^\.SyncID$|^\.SyncIgnore$|\~$/;
-    var _cacheExcludeRegEx = /^node_modules$|^bower_components$/;
+    var _cacheExcludeFileNameRegEx = /^node_modules$|^bower_components$|^.npm$|^.yarn$|^__pycache__$/;
 
     /**
      * Glob definition of files and folders that should be excluded directly
      * inside node domain watching with chokidar
      */
-    var defaultIgnoreGlobs = [
-        "**/(.pyc|.git|.gitmodules|.svn|.DS_Store|Thumbs.db|.hg|CVS|.hgtags|.idea|.c9revisions|.SyncArchive|.SyncID|.SyncIgnore)",
+    const defaultIgnoreGlobs = [
+        "node_modules",
+        "**/node_modules",
+        "bower_components",
         "**/bower_components",
-        "**/node_modules"
+        ".npm",
+        ".yarn",
+        "__pycache__",
+        ".pyc",
+        ".git",
+        ".gitmodules",
+        ".svn",
+        ".DS_Store",
+        "Thumbs.db",
+        ".hg",
+        "CVS",
+        ".hgtags",
+        ".idea",
+        ".c9revisions",
+        ".SyncArchive",
+        ".SyncID",
+        ".SyncIgnore"
     ];
 
     /**
@@ -131,12 +149,13 @@ define(function (require, exports, module) {
 
     /**
      * Returns false for files and directories that should not be indexed for search or code hints.
+     * If the entry is a directory, its children should be indexed too.
      *
      * @param {!FileSystemEntry} entry File or directory to filter
      * @return {boolean} true if the file should be displayed
      */
     function shouldIndex(entry) {
-        return shouldShow(entry) && !_cacheExcludeRegEx.test(entry.name);
+        return shouldShow(entry) && !_cacheExcludeFileNameRegEx.test(entry.name);
     }
 
     // Constants used by the ProjectModel
@@ -197,17 +216,12 @@ define(function (require, exports, module) {
      * @return {$.Promise} resolved when the file or directory has been created.
      */
     function doCreate(path, isFolder) {
-        var d = new $.Deferred();
-        var filename = FileUtils.getBaseName(path);
+        const d = new $.Deferred();
+        const filename = FileUtils.getBaseName(path);
 
         // Check if filename
-        if (!isValidFilename(filename)){
-            return d.reject(ERROR_INVALID_FILENAME).promise();
-        }
-
-        // Check if fullpath with filename is valid
-        // This check is used to circumvent directory jumps (Like ../..)
-        if (!isValidPath(path)) {
+        // or Check if fullpath with filename is valid - This check is used to circumvent directory jumps (Like ../..)
+        if (!isValidFilename(filename) || !isValidPath(path)){
             return d.reject(ERROR_INVALID_FILENAME).promise();
         }
 
@@ -215,25 +229,25 @@ define(function (require, exports, module) {
             if (!err) {
                 // Item already exists, fail with error
                 d.reject(FileSystemError.ALREADY_EXISTS);
+                return;
+            }
+            if (isFolder) {
+                const directory = FileSystem.getDirectoryForPath(path);
+
+                directory.create(function (err) {
+                    if (err) {
+                        d.reject(err);
+                    } else {
+                        d.resolve(directory);
+                    }
+                });
             } else {
-                if (isFolder) {
-                    var directory = FileSystem.getDirectoryForPath(path);
+                // Create an empty file
+                const file = FileSystem.getFileForPath(path);
 
-                    directory.create(function (err) {
-                        if (err) {
-                            d.reject(err);
-                        } else {
-                            d.resolve(directory);
-                        }
-                    });
-                } else {
-                    // Create an empty file
-                    var file = FileSystem.getFileForPath(path);
-
-                    FileUtils.writeText(file, "").then(function () {
-                        d.resolve(file);
-                    }, d.reject);
-                }
+                FileUtils.writeText(file, "").then(function () {
+                    d.resolve(file);
+                }, d.reject);
             }
         });
 
@@ -326,6 +340,8 @@ define(function (require, exports, module) {
      * ProjectManager.getAllFiles().
      */
     ProjectModel.prototype._allFilesCachePromise = null;
+    ProjectModel.prototype._allFilesScopeCachePromise = null;
+    ProjectModel.prototype._allFilesScope = null;
 
     /**
      * Sets whether the file tree is focused or not.
@@ -445,7 +461,7 @@ define(function (require, exports, module) {
      * starting up. The cache is cleared on every filesystem change event, and
      * also on project load and unload.
      *
-     * @param {boolean} true to sort files by their paths
+     * @param {boolean} sort true to sort files by their paths
      * @return {$.Promise.<Array.<File>>}
      */
     ProjectModel.prototype._getAllFilesCache = function _getAllFilesCache(sort) {
@@ -484,6 +500,49 @@ define(function (require, exports, module) {
         return this._allFilesCachePromise;
     };
 
+    ProjectModel.prototype._getAllFilesInScopeCache = function (sort, scope) {
+        let self = this;
+        if(!this.isWithinProject(scope)){
+            return (new $.Deferred()).reject(
+                new Error(`Scope ${scope.fullPath} should be within project root ${self.projectRoot}`)
+            ).promise();
+        }
+        if (!this._allFilesScopeCachePromise || this._allFilesScope !== scope) {
+            this._allFilesScope = scope;
+            const deferred = new $.Deferred(),
+                allFiles = [],
+                allFilesVisitor = function (entry) {
+                    if (shouldIndex(entry) || entry.fullPath === scope.fullPath) {
+                        if (entry.isFile) {
+                            allFiles.push(entry);
+                        }
+                        return true;
+                    }
+                    return false;
+                };
+
+            this._allFilesScopeCachePromise = deferred.promise();
+
+            const scopeTimer = PerfUtils.markStart("Project scope files cache: " +
+                    scope.fullPath),
+                options = {
+                    sortList: sort
+                };
+
+            scope.visit(allFilesVisitor, options, function (err) {
+                if (err) {
+                    PerfUtils.finalizeMeasurement(scopeTimer);
+                    deferred.reject(err);
+                } else {
+                    PerfUtils.addMeasurement(scopeTimer);
+                    deferred.resolve(allFiles);
+                }
+            }.bind(this));
+        }
+
+        return this._allFilesScopeCachePromise;
+    };
+
     /**
      * Returns an Array of all files for this project, optionally including
      * files additional files provided. Files are filtered out by shouldShow().
@@ -492,18 +551,23 @@ define(function (require, exports, module) {
      *          the file list (does not filter directory traversal). API matches Array.filter().
      * @param {Array.<File>=} additionalFiles Additional files to include (for example, the WorkingSet)
      *          Only adds files that are *not* under the project root or untitled documents.
-     * @param {boolean} true to sort files by their paths
+     * @param {boolean} sort true to sort files by their paths
+     * @param {Object} options optional path within project to narrow down the search
+     * @param {File} options.scope optional path within project to narrow down the search
      *
      * @return {$.Promise} Promise that is resolved with an Array of File objects.
      */
-    ProjectModel.prototype.getAllFiles = function getAllFiles(filter, additionalFiles, sort) {
+    ProjectModel.prototype.getAllFiles = function getAllFiles(filter, additionalFiles, sort, options) {
         // The filter and includeWorkingSet params are both optional.
         // Handle the case where filter is omitted but includeWorkingSet is
         // specified.
-        if (additionalFiles === undefined && typeof (filter) !== "function") {
+        if (typeof (filter) !== "function") {
+            options = sort;
+            sort = additionalFiles;
             additionalFiles = filter;
             filter = null;
         }
+        options = options || {};
 
         var filteredFilesDeferred = new $.Deferred();
 
@@ -511,7 +575,10 @@ define(function (require, exports, module) {
         // Note that with proper promises we may be able to fix this so that we're not doing this
         // anti-pattern of creating a separate deferred rather than just chaining off of the promise
         // from _getAllFilesCache
-        this._getAllFilesCache(sort).done(function (result) {
+        const getAllFilesFn = options.scope ?
+            this._getAllFilesInScopeCache.bind(this) : this._getAllFilesCache.bind(this);
+        getAllFilesFn(sort, options.scope).done(function (result) {
+            result = [...result]; // clone it as the above result is cached and we dont want to modify the cache
             // Add working set entries, if requested
             if (additionalFiles) {
                 additionalFiles.forEach(function (file) {
@@ -553,6 +620,8 @@ define(function (require, exports, module) {
      */
     ProjectModel.prototype._resetCache = function _resetCache() {
         this._allFilesCachePromise = null;
+        this._allFilesScopeCachePromise = null;
+        this._allFilesScope = null;
     };
 
     /**
@@ -673,12 +742,14 @@ define(function (require, exports, module) {
         path = _getPathFromFSObject(path);
 
         if (!this.isWithinProject(path)) {
-            return d.resolve().promise();
+            Phoenix.app.openPathInFileBrowser(path)
+                .then(d.resolve)
+                .catch(d.reject);
+            return d.promise();
         }
 
-        var parentDirectory = FileUtils.getDirectoryPath(path),
-            self = this;
-        this.setDirectoryOpen(parentDirectory, true).then(function () {
+        const self = this;
+        this.setDirectoryOpen(FileUtils.getDirectoryPath(path), true).then(function () {
             if (_pathIsFile(path)) {
                 self.setSelected(path);
             }

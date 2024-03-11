@@ -32,6 +32,8 @@ define({
     "COPYING": "Copying {0}",
     "DELETING": "Deleting {0}",
     "RENAMING": "Renaming",
+    "STORED_IN_YOUR_BROWSER": "Stored in Your Browser",
+    "SUPPORT_US_OPEN_COLLECTIVE": "Support us on Open Collective",
     // General file io error strings
     "GENERIC_ERROR": "(error {0})",
     "NOT_FOUND_ERR": "The file/directory could not be found.",
@@ -107,6 +109,8 @@ define({
 
     // Application preferences corrupt error strings
     "ERROR_PREFS_CORRUPT_TITLE": "Error Reading Preferences",
+    "ERROR_PREFS_PROJECT_LINT": "Project Preferences",
+    "ERROR_PREFS_PROJECT_LINT_MESSAGE": "Error: The project contains both `.brackets.json` and `.phcode.json` files, causing a conflict. Please delete either `.brackets.json` or `.phcode.json` and then reload the project.",
     "ERROR_PREFS_CORRUPT": "Your preferences file is not valid JSON. The file will be opened so that you can correct the format. You will need to restart {APP_NAME} for the changes to take effect.",
     "ERROR_PROJ_PREFS_CORRUPT": "Your project preferences file is not valid JSON. The file will be opened so that you can correct the format. You will need to reload the project for the changes to take effect.",
 
@@ -134,7 +138,7 @@ define({
     "LIVE_DEV_STATUS_TIP_NOT_CONNECTED": "Live Preview",
     "LIVE_DEV_STATUS_TIP_PROGRESS1": "Live Preview: Connecting\u2026",
     "LIVE_DEV_STATUS_TIP_PROGRESS2": "Live Preview: Initializing\u2026",
-    "LIVE_DEV_STATUS_TIP_CONNECTED": "Disconnect Live Preview",
+    "LIVE_DEV_STATUS_TIP_CONNECTED": "Live Preview Server Active",
     "LIVE_DEV_STATUS_TIP_OUT_OF_SYNC": "Live Preview",
     "LIVE_DEV_SELECT_FILE_TO_PREVIEW": "Select File To Live Preview",
     "LIVE_DEV_CLICK_TO_RELOAD_PAGE": "Reload Page",
@@ -159,10 +163,11 @@ define({
     "EXT_MODIFIED_WARNING": "<span class='dialog-filename'>{0}</span> has been modified on disk outside of {APP_NAME}.<br /><br />Do you want to save the file and overwrite those changes?",
     "EXT_MODIFIED_MESSAGE": "<span class='dialog-filename'>{0}</span> has been modified on disk outside of {APP_NAME}, but also has unsaved changes in {APP_NAME}.<br /><br />Which version do you want to keep?",
     "EXT_DELETED_MESSAGE": "<span class='dialog-filename'>{0}</span> has been deleted on disk outside of {APP_NAME}, but has unsaved changes in {APP_NAME}.<br /><br />Do you want to keep your changes?",
+    "EXT_ALWAYS_MODIFIED_BUTTON_TOOLTIP": "Always overwrite files until project switch or restart",
 
     // Window unload warning messages
-    "WINDOW_UNLOAD_WARNING": "Are you sure you want to navigate to a different URL and leave Brackets?",
-    "WINDOW_UNLOAD_WARNING_WITH_UNSAVED_CHANGES": "You have unsaved changes! Are you sure you want to navigate to a different URL and leave Brackets?",
+    "WINDOW_UNLOAD_WARNING": "Are you sure you want to navigate to a different URL and leave {APP_NAME}?",
+    "WINDOW_UNLOAD_WARNING_WITH_UNSAVED_CHANGES": "You have unsaved changes! Are you sure you want to navigate to a different URL and leave {APP_NAME}?",
 
     // Generic dialog/button labels
     "DONE": "Done",
@@ -172,6 +177,7 @@ define({
     "SAVE": "Save",
     "SAVE_AS": "Save As\u2026",
     "SAVE_AND_OVERWRITE": "Overwrite",
+    "ALWAYS_OVERWRITE": "Always Overwrite",
     "DELETE": "Delete",
     "BUTTON_YES": "Yes",
     "BUTTON_NO": "No",
@@ -224,6 +230,8 @@ define({
     "FIND_IN_FILES_FILE_PATH": "<span class='dialog-filename'>{0}</span> {2} <span class='dialog-path'>{1}</span>", // We should use normal dashes on Windows instead of em dash eventually
     "FIND_IN_FILES_EXPAND_COLLAPSE": "Ctrl/Cmd click to expand/collapse all",
     "FIND_IN_FILES_INDEXING": "Indexing for Instant Search\u2026",
+    "FIND_IN_FILES_SEARCHING": "Searching Files\u2026",
+    "FIND_IN_FILES_SEARCHING_IN": "In {0}",
     "FIND_IN_FILES_INDEXING_PROGRESS": "Indexing {0} of {1} files for Instant Search\u2026",
     "REPLACE_IN_FILES_ERRORS_TITLE": "Replace Errors",
     "REPLACE_IN_FILES_ERRORS": "The following files weren't modified because they changed after the search or couldn't be written.",
@@ -236,9 +244,13 @@ define({
     "CLEAR_FILE_FILTER": "Don't Exclude Files",
     "NO_FILE_FILTER": "No Files Excluded",
     "EXCLUDE_FILE_FILTER": "Exclude {0}",
+    "INCLUDE_FILE_FILTER": "Include {0}",
+    "EXCLUDE_FILE_FILTER_DROPDOWN": "Exclude",
+    "INCLUDE_FILE_FILTER_DROPDOWN": "Include",
     "EDIT_FILE_FILTER": "Edit\u2026",
-    "FILE_FILTER_DIALOG": "Edit Exclusion Set",
-    "FILE_FILTER_INSTRUCTIONS": "Exclude files and folders matching any of the following strings / substrings or <a href='{0}' title='{0}'>wildcards</a>. Enter each string on a new line.",
+    "FILE_FILTER_DIALOG": "Edit Exclusion Filter",
+    "FILE_FILTER_INSTRUCTIONS": "Exclude files and folders matching any of the following <a href='{0}' title='{0}'>ignore wildcards</a>. Enter each string on a new line. E.g. <ul><li><code>*.js</code> will match <code>a/b/x.js</code>, <code>xyx.js</code>, etc..</li> <li><code>./*.css</code> will only match <code>x.css</code> in project root, but not <code>y/x.css</code> in sub folder.</li></ul>",
+    "FILE_FILTER_INSTRUCTIONS_INCLUDE": "Include only files and folders matching any of the following <a href='{0}' title='{0}'>ignore wildcards</a>. Enter each string on a new line. E.g. <ul><li><code>*.js</code> will match <code>a/b/x.js</code>, <code>xyx.js</code>, etc..</li> <li><code>./*.css</code> will only match <code>x.css</code> in project root, but not <code>y/x.css</code> in sub folder.</li></ul>",
     "FILTER_NAME_PLACEHOLDER": "Name this exclusion set (optional)",
     "FILTER_NAME_REMAINING": "{0} characters remaining",
     "FILE_FILTER_CLIPPED_SUFFIX": "and {0} more",
@@ -303,6 +315,32 @@ define({
     "KEYBOARD_INSERT_DO_NOT_TRANSLATE": "true",
     "KEYBOARD_DELETE": "Delete",
     "KEYBOARD_DELETE_DO_NOT_TRANSLATE": "true",
+    "KEYBOARD_OVERLAY_TEXT": "Use arrows to navigate, or type to select UI elements.",
+    "KEYBOARD_SHORTCUT_CHANGE_TITLE": "Change Keyboard Shortcut\u2026",
+    "KEYBOARD_SHORTCUT_CHANGE_DIALOG_TITLE": "Change Keyboard Shortcut",
+    "KEYBOARD_SHORTCUT_CHANGE_DIALOG_TEXT": "Press the new key combination for <b>'{0}'</b> (Current: <b>{1}</b>)",
+    "KEYBOARD_SHORTCUT_CHANGE_DIALOG_DUPLICATE": "Warning: The key combination <b>{0}</b> is already assigned to <b>'{1}'</b>. Reassign to <b>'{2}'</b>?",
+    "KEYBOARD_SHORTCUT_ASSIGN": "Assign",
+    "KEYBOARD_SHORTCUT_NONE": "None",
+    // keyboard shortcuts panel
+    "KEYBOARD_SHORTCUT_MENU_SHOW_SHORTCUTS": "Keyboard Shortcuts\u2026",
+    "KEYBOARD_SHORTCUT_MENU_SHOW_SHORTCUTS_BUTTON": "Show All Shortcuts\u2026",
+    //Table
+    "KEYBOARD_SHORTCUT_TABLE_BASE_KEY": "Base Key",
+    "KEYBOARD_SHORTCUT_TABLE_KEY_BINDING": "Shortcut",
+    "KEYBOARD_SHORTCUT_TABLE_COMMAND_ID": "Command ID",
+    "KEYBOARD_SHORTCUT_TABLE_COMMAND_NAME": "Command",
+    "KEYBOARD_SHORTCUT_TABLE_DOUBLE_CLICK": "Double-click to change shortcut",
+    "KEYBOARD_SHORTCUT_TABLE_ORIGIN": "Origin",
+    //Origins
+    "KEYBOARD_SHORTCUT_ORIG_EXTENSION": "Extension",
+    //Bottom panel
+    "KEYBOARD_SHORTCUT_PANEL_TITLE": "Keyboard Shortcuts",
+    "KEYBOARD_SHORTCUT_PANEL_FILTER": "Filter&hellip;",
+    "KEYBOARD_SHORTCUT_PANEL_RESET": "Reset\u2026",
+    "KEYBOARD_SHORTCUT_PANEL_RESET_DEFAULT": "Reset To Default Shortcuts\u2026",
+    "KEYBOARD_SHORTCUT_RESET_DIALOG_TITLE": "Reset Keyboard Shortcuts",
+    "KEYBOARD_SHORTCUT_RESET_DIALOG_MESSAGE": "Reset all custom shortcuts to default? This cannot be undone.",
 
     /**
      * StatusBar strings
@@ -330,6 +368,14 @@ define({
     "STATUSBAR_DEFAULT_LANG": "(default)",
     "STATUSBAR_SET_DEFAULT_LANG": "Set as Default for .{0} Files",
     "STATUSBAR_ENCODING_TOOLTIP": "Select the encoding",
+    "STATUSBAR_TASKS": "Tasks",
+    "STATUSBAR_TASKS_TOOLTIP": "Manage Active Tasks",
+    "STATUSBAR_TASKS_HIDE_SPINNER": "Hide Spinner Icon",
+    "STATUSBAR_TASKS_UNKNOWN_EXTENSION_TASK": "Unknown Extension Task\u2026",
+    "STATUSBAR_TASKS_PLAY": "Start or Resume",
+    "STATUSBAR_TASKS_PAUSE": "Pause",
+    "STATUSBAR_TASKS_STOP": "Stop",
+    "STATUSBAR_TASKS_RESTART": "Restart",
 
     // CodeInspection: errors/warnings
     "ERRORS_PANEL_TITLE_MULTIPLE": "{0} Problems",
@@ -359,9 +405,9 @@ define({
     "CMD_FILE_COPY": "Copy",
     "CMD_FILE_COPY_PATH": "Copy Path",
     "CMD_FILE_PASTE": "Paste",
-    "CMD_PROJECT_NEW": "New Project",
+    "CMD_PROJECT_NEW": "New Project\u2026",
     "CMD_FILE_NEW_FOLDER": "New Folder",
-    "CMD_FILE_OPEN": "Open\u2026",
+    "CMD_FILE_OPEN": "Open Files\u2026",
     "CMD_RECENT_FILES_OPEN": "Recent Files\u2026",
     "CMD_ADD_TO_WORKING_SET": "Open To Working Set",
     "CMD_OPEN_DROPPED_FILES": "Open Dropped Files",
@@ -421,9 +467,9 @@ define({
     "CMD_FIND": "Find",
     "CMD_FIND_NEXT": "Find Next",
     "CMD_FIND_PREVIOUS": "Find Previous",
-    "CMD_FIND_ALL_AND_SELECT": "Find All and Select",
-    "CMD_ADD_NEXT_MATCH": "Add Next Match to Selection",
-    "CMD_SKIP_CURRENT_MATCH": "Skip and Add Next Match",
+    "CMD_FIND_ALL_AND_SELECT": "Select All Occurrences",
+    "CMD_ADD_NEXT_MATCH": "Add Next Occurrence",
+    "CMD_SKIP_CURRENT_MATCH": "Skip and Add Next Occurrence",
     "CMD_FIND_IN_FILES": "Find in Files",
     "CMD_FIND_IN_SUBTREE": "Find in\u2026",
     "CMD_REPLACE": "Replace",
@@ -437,8 +483,10 @@ define({
     "CMD_TOGGLE_SIDEBAR": "Toggle Sidebar",
     "CMD_TOGGLE_PANELS": "Toggle Panels",
     "CMD_TOGGLE_PURE_CODE": "No Distractions",
+    "CMD_TOGGLE_FULLSCREEN": "Fullscreen",
     "CMD_ZOOM_UI": "Zoom UI and Fonts",
     "CMD_ZOOM_IN": "Zoom In",
+    "CMD_ZOOM_IN_SCALE": "Zoom In (Current: {0}%)",
     "CMD_ZOOM_OUT": "Zoom Out",
     "CMD_INCREASE_FONT_SIZE": "Increase Font Size",
     "CMD_DECREASE_FONT_SIZE": "Decrease Font Size",
@@ -456,6 +504,7 @@ define({
     "CMD_WORKING_SORT_TOGGLE_AUTO": "Automatic Sort",
     "CMD_THEMES": "Themes\u2026",
     "CMD_TOGGLE_SEARCH_AUTOHIDE": "Automatically close search",
+    "CMD_KEYBOARD_NAV_OVERLAY": "UI Navigation Mode",
 
     // Navigate menu commands
     "NAVIGATE_MENU": "Navigate",
@@ -478,11 +527,13 @@ define({
     "CMD_SHOW_IN_TREE": "Show in File Tree",
     "CMD_SHOW_IN_EXPLORER": "Show in Explorer",
     "CMD_SHOW_IN_FINDER": "Show in Finder",
-    "CMD_SHOW_IN_OS": "Show in OS",
+    "CMD_SHOW_IN_OS": "Show in OS Files",
     "CMD_SWITCH_PANE_FOCUS": "Switch Pane Focus",
 
     // Debug menu commands
     "CMD_OPEN_VFS": "Open Virtual File System",
+    "CMD_DIAGNOSTIC_TOOLS": "{APP_NAME} Diagnostic Tools",
+    "CMD_OPEN_EXTENSIONS_FOLDER": "Open Extensions Folder\u2026",
     "CMD_OPEN_VIRTUAL_SERVER": "Open Virtual Server",
 
     // Help menu commands
@@ -494,12 +545,12 @@ define({
     "CMD_RELEASE_NOTES": "Release Notes",
     "CMD_GET_INVOLVED": "Get Involved",
     "CMD_SHOW_EXTENSIONS_FOLDER": "Show Extensions Folder",
-    "CMD_HEALTH_DATA_STATISTICS": "Health Report",
-    "CMD_HOMEPAGE": "{APP_NAME} Homepage",
+    "CMD_HEALTH_DATA_STATISTICS": "Health Report\u2026",
+    "CMD_HOMEPAGE": "Home Page - Download Apps",
     "CMD_TWITTER": "{TWITTER_NAME} on Twitter",
     "CMD_ABOUT": "About {APP_TITLE}",
     "CMD_OPEN_PREFERENCES": "Open Preferences File",
-    "CMD_OPEN_KEYMAP": "Open User Key Map",
+    "CMD_OPEN_KEYMAP": "Open User Key Map File",
 
     // Strings for main-view.html
     "EXPERIMENTAL_BUILD": "experimental build",
@@ -520,10 +571,29 @@ define({
     "ABOUT_TEXT_LINE6": "Lots of people (but we're having trouble loading that data right now).",
     "ABOUT_TEXT_MDN_DOCS": "MDN Docs and the MDN graphical logo are licensed under a Creative Commons Attribution license, <a href='{MDN_DOCS_LICENSE}'>CC-BY-SA 2.5 Unported</a>.",
     "UPDATE_NOTIFICATION_TOOLTIP": "There's a new build of {APP_NAME} available! Click here for details.",
+    "UPDATE_NOT_AVAILABLE_TITLE": "{APP_NAME} is up to date",
+    "UPDATE_UP_TO_DATE": "Your version of {APP_NAME} is the latest and greatest!",
     "UPDATE_AVAILABLE_TITLE": "Update Available",
-    "UPDATE_RELOAD_APP": "Please close all {APP_NAME} windows/tabs and reopen {APP_NAME} to get the latest version.",
+    "UPDATE_READY_RESTART_TITLE": "Update Ready: Restart Required",
+    "UPDATE_READY_RESTART_MESSAGE": "Close all {APP_NAME} app windows and restart the app to launch the updated version.",
+    "UPDATE_READY_RESTART_INSTALL_MESSAGE": "Update Successfully Downloaded: Please close all {APP_NAME} app windows to apply the latest updates.",
+    "UPDATE_FAILED_TITLE": "Update Failed",
+    "UPDATE_INSTALLING": "Installing Update\u2026",
+    "UPDATE_INSTALLING_MESSAGE": "Update Installation in Progress: {APP_NAME} is currently installing the latest updates. The application will automatically close once the installation is complete.",
+    "UPDATE_FAILED_MESSAGE": "Please close all {APP_NAME} app windows and reopen the application to attempt the update again.",
+    "UPDATE_FAILED_VISIT_SITE_MESSAGE": "To retry, please exit all instances of {APP_NAME} and restart the application. <br>You will be directed to our download page shortly, where you can manually download the latest version.",
     "UPDATE_MESSAGE": "Hey, there's a new build of {APP_NAME} available. Here are some of the new features:",
     "GET_IT_NOW": "Get it now!",
+    "UPDATE_LATER": "Remind Me Later",
+    "UPDATE_DONE": "Restart to Update {APP_NAME}",
+    "UPDATE_RESTART": "Restart to apply updates",
+    "UPDATE_RESTART_INSTALL": "Restart to install updates",
+    "UPDATE_DOWNLOADING": "Downloading Installer",
+    "INSTALL_WEBAPP": "Install {APP_NAME} on Your Device",
+    "UPDATE_DOWNLOAD_PROGRESS": "Downloading- {0} of {1} MB",
+    "UPDATING_APP": "Updating {APP_NAME}",
+    "UPDATING_APP_MESSAGE": "This may take a while",
+    "UPDATING_APP_DIALOG_MESSAGE": "Update in progress. You can continue using {APP_NAME} while we upgrade.",
     "PROJECT_SETTINGS_TITLE": "Project Settings for: {0}",
     "PROJECT_SETTING_BASE_URL": "Live Preview Base URL",
     "PROJECT_SETTING_BASE_URL_HINT": "To use a local server, enter a URL like http://localhost:8000/",
@@ -605,6 +675,8 @@ define({
     // For NOT_FOUND_ERR, see generic strings above
     "EXTENSION_MANAGER_TITLE": "Extension Manager",
     "EXTENSION_MANAGER_ERROR_LOAD": "Unable to access the extension registry. Please try again later.",
+    "EXTENSION_UPDATE_RESTART_TITLE": "Restart To Update",
+    "EXTENSION_UPDATE_RESTART_MESSAGE": "To load updated extensions, please close all running instances of {APP_NAME} and restart the application.",
     "INSTALL_EXTENSION_DRAG": "Drag .zip here or",
     "INSTALL_EXTENSION_DROP": "Drop .zip to install",
     "INSTALL_EXTENSION_DROP_ERROR": "Install/Update aborted due to the following errors:",
@@ -637,8 +709,8 @@ define({
     "EXTENSION_MANAGER_UPDATE_ERROR": "Unable to update one or more extensions: {0}. {APP_NAME} will still reload.",
     "EXTENSION_MANAGER_DISABLE": "Disable Extension",
     "EXTENSION_MANAGER_DISABLE_ERROR": "Unable to disable one or more extensions: {0}. {APP_NAME} will still reload.",
-    "EXTENSION_MANAGER_THEMES_INFO":"To <a class=\"theme_settings\">select default themes</a> or modify other theme settings, <a class=\"theme_settings\">click here</a>.",
-    "EXTENSION_MANAGER_THEMES_UNDO":"Revert To Previous Theme",
+    "EXTENSION_MANAGER_THEMES_INFO": "To <a class=\"theme_settings\">select default themes</a> or modify other theme settings, <a class=\"theme_settings\">click here</a>.",
+    "EXTENSION_MANAGER_THEMES_UNDO": "Revert To Previous Theme",
     "MARKED_FOR_REMOVAL": "Marked for removal",
     "UNDO_REMOVE": "Undo",
     "MARKED_FOR_UPDATE": "Marked for update",
@@ -680,18 +752,20 @@ define({
     // extensions/default/DebugCommands
     "DEBUG_MENU": "Debug",
     "ERRORS": "Errors",
-    "CMD_SHOW_DEV_TOOLS": "Show Developer Tools",
+    "CMD_SHOW_DEV_TOOLS": "{APP_NAME} Developer Tools",
     "CMD_REFRESH_WINDOW": "Reload With Extensions",
     "CMD_LOAD_CURRENT_EXTENSION": "Load Project As Extension",
     "CMD_RELOAD_CURRENT_EXTENSION": "Reload Project As Extension",
     "CMD_UNLOAD_CURRENT_EXTENSION": "Unload Project As Extension",
     "CMD_RELOAD_WITHOUT_USER_EXTS": "Reload Without Extensions",
-    "CMD_NEW_BRACKETS_WINDOW": "New {APP_NAME} Window",
+    "CMD_NEW_BRACKETS_WINDOW": "New Window",
     "CMD_LAUNCH_SCRIPT_MAC": "Install Command Line Shortcut",
-    "CMD_SWITCH_LANGUAGE": "Switch Language",
-    "CMD_RUN_UNIT_TESTS": "Run Tests",
+    "CMD_SWITCH_LANGUAGE": "Switch Language\u2026",
+    "CMD_RUN_UNIT_TESTS": "Run {APP_NAME} Tests",
     "CMD_SHOW_PERF_DATA": "Show Performance Data",
     "CMD_ENABLE_LOGGING": "Enable Detailed Logs",
+    "CMD_ENABLE_PHNODE_INSPECTOR": "Enable PhNode Inspector",
+    "CMD_GET_PHNODE_INSPECTOR_URL": "How to Inspect PhNode",
     "CMD_ENABLE_LIVE_PREVIEW_LOGS": "Live Preview Logs",
     "CMD_OPEN_BRACKETS_SOURCE": "Open {APP_NAME} Source",
 
@@ -707,6 +781,8 @@ define({
     "ERROR_NO_EXTENSION_PACKAGE": "<code>package.json</code> file not detected in current project. Is the current project a valid {APP_NAME} Extension? </br>See <a href='https://github.com/phcode-dev/phoenix/wiki/How-To-Write-Extensions-And-Themes'>this link</a> for more details.",
     "ERROR_INVALID_EXTENSION_PACKAGE": "<code>package.json</code> file is invalid JSON. </br>See <a href='https://github.com/phcode-dev/phoenix/wiki/How-To-Write-Extensions-And-Themes'>this link</a> for more details.",
     "ERROR_INVALID_EXTENSION_PACKAGE_FIELDS": "Required fields missing in <code>package.json</code>: [{0}] </br>See <a href='https://github.com/phcode-dev/phoenix/wiki/How-To-Write-Extensions-And-Themes'>this link</a> for more details.",
+    "ERROR_NODE_JS_CRASH_TITLE": "Oops! Something went wrong.",
+    "ERROR_NODE_JS_CRASH_MESSAGE": "We’ve run into a problem and need to restart {APP_NAME}. Don’t worry, we're trying to save all your work before restarting. </br>(Error: ERROR_NODE_JS_CRASH)",
 
     "LANGUAGE_TITLE": "Switch Language",
     "LANGUAGE_MESSAGE": "Language:",
@@ -744,7 +820,7 @@ define({
     "CMD_SHOW_PARAMETER_HINT": "Show Parameter Hint",
     "NO_ARGUMENTS": "<no parameters>",
     "DETECTED_EXCLUSION_TITLE": "JavaScript File Inference Problem",
-    "DETECTED_EXCLUSION_INFO": "{APP_NAME} ran into trouble processing <span class='dialog-filename'>{0}</span>.<br><br>This file will no longer be processed for code hints, Jump to Definition or Quick Edit. To re-enable this file, open <code>.brackets.json</code> in your project and edit <code>jscodehints.detectedExclusions</code>.<br><br>This is likely a {APP_NAME} bug. If you can provide a copy of this file, please <a href='https://github.com/adobe/brackets/wiki/How-to-Report-an-Issue'>file a bug</a> with a link to the file named here.",
+    "DETECTED_EXCLUSION_INFO": "{APP_NAME} ran into trouble processing <span class='dialog-filename'>{0}</span>.<br><br>This file will no longer be processed for code hints, Jump to Definition or Quick Edit. To re-enable this file, open <code>.phcode.json</code> in your project and edit <code>jscodehints.detectedExclusions</code>.<br><br>This is likely a {APP_NAME} bug. If you can provide a copy of this file, please <a href='https://github.com/adobe/brackets/wiki/How-to-Report-an-Issue'>file a bug</a> with a link to the file named here.",
 
     // extensions/default/JavascriptRefactoring
     "CMD_REFACTOR": "Refactor",
@@ -781,6 +857,7 @@ define({
 
     // extensions/default/RecentProjects
     "CMD_TOGGLE_RECENT_PROJECTS": "Recent Projects",
+    "REMOVE_FROM_RECENT_PROJECTS": "Remove from Recent Projects",
 
     // extensions/default/MDNDocs
     "DOCS_MORE_LINK": "Read more",
@@ -798,6 +875,7 @@ define({
     "RECOVER_UNSAVED_FILES_TITLE": "Recover Unsaved Files?",
     "RECOVER_UNSAVED_FILES_MESSAGE": "Restore unsaved files from your previous session?",
     "RECOVER_UNSAVED_FILES_RESTORE": "Restore",
+    "DISCARD_UNSAVED_FILES_RESTORE": "Discard",
 
     // Descriptions of core preferences
     "DESCRIPTION_CLOSE_BRACKETS": "true to automatically close braces, brackets and parentheses",
@@ -873,6 +951,7 @@ define({
     "DESCRIPTION_USE_THEME_SCROLLBARS": "true to allow custom scroll bars",
     "DESCRIPTION_LINTING_COLLAPSED": "true to collapse linting panel",
     "DESCRIPTION_FONT_FAMILY": "Change font family",
+    "DESCRIPTION_DESKTOP_ZOOM_SCALE": "Choose a zoom scale factor ranging from 0.1 (for a more compact view) to 2 (for a larger, more magnified view). Available in desktop apps only",
     "DESCRIPTION_FONT_SIZE": "Change font size; e.g. 13px",
     "DESCRIPTION_FIND_IN_FILES_NODE": "true to enable node based search",
     "DESCRIPTION_FIND_IN_FILES_INSTANT": "true to enable instant search",
@@ -881,7 +960,7 @@ define({
     "DESCRIPTION_OPEN_USER_PREFS_IN_SECOND_PANE": "false to open user preferences file in left/top pane",
     "DESCRIPTION_MERGE_PANES_WHEN_LAST_FILE_CLOSED": "true to collapse panes after the last file from the pane is closed via pane header close button",
     "DESCRIPTION_SHOW_PANE_HEADER_BUTTONS": "Toggle when to show the close and flip-view buttons on the header.",
-    "DEFAULT_PREFERENCES_JSON_HEADER_COMMENT": "/*\n * This is a read-only file with the preferences supported\n * by {APP_NAME}.\n * Use this file as a reference to modify your preferences\n * file \"brackets.json\" opened in the other pane.\n * For more information on how to use preferences inside\n * {APP_NAME}, refer to the web page at https://github.com/adobe/brackets/wiki/How-to-Use-Brackets#preferences\n */",
+    "DEFAULT_PREFERENCES_JSON_HEADER_COMMENT": "/*\n * This is a read-only file with the preferences supported\n * by {APP_NAME}.\n * Use this file as a reference to modify your preferences\n * file \"phcode.json\" opened in the other pane.\n * For more information on how to use preferences inside\n * {APP_NAME}, refer to the web page at https://github.com/adobe/brackets/wiki/How-to-Use-Brackets#preferences\n */",
     "DEFAULT_PREFERENCES_JSON_DEFAULT": "Default",
     "DESCRIPTION_PURE_CODING_SURFACE": "true to enable code only mode and hide all other UI elements in {APP_NAME}",
     "DESCRIPTION_INDENT_LINE_COMMENT": "true to enable indenting of line comments",
@@ -891,6 +970,16 @@ define({
     "DESCRIPTION_LIVEDEV_ENABLE_REVERSE_INSPECT": "false to disable live preview reverse inspect",
     "DESCRIPTION_LIVEDEV_NO_PREVIEW": "Nothing to preview!",
     "DESCRIPTION_LIVEDEV_NO_PREVIEW_DETAILS": "Please select an HTML file to preview",
+    "DESCRIPTION_LIVEDEV_PREVIEW_RESTRICTED": "Preview Unavailable!",
+    "DESCRIPTION_LIVEDEV_PREVIEW_RESTRICTED_DETAILS": "This HTML file is not part of the current project. For security reasons, only project files can be live-previewed. To preview this file, open its containing folder as a separate project.",
+    "DESCRIPTION_LIVEDEV_MAIN_HEADING": "Uh Oh! <br>Your current browser doesn't support live preview.",
+    "DESCRIPTION_LIVEDEV_MAIN_SPAN": "Get the best live preview experience by downloading our native apps for Windows, Mac, and Linux from <a href=\"https://phcode.io\" style=\"color: white\">phcode.io</a>.<br>",
+    "DESCRIPTION_LIVEDEV_SECURITY_POPOUT_MESSAGE": "You are about to open a file for live preview. Please proceed only if you trust the source of this project. Click 'Trust Project' to continue, or close this window if you do not trust the source.",
+    "DESCRIPTION_LIVEDEV_SECURITY_TRUST_MESSAGE": "You are about to open a file for live preview. Please proceed by clicking 'Trust Project' only if you trust the source of this project!",
+    "CONFIRM_EXTERNAL_BROWSER_TITLE": "Pop-ups Blocked",
+    "CONFIRM_EXTERNAL_BROWSER_MESSAGE": "Do you want to allow the live preview page to open this URL: {0}?",
+    "TRUST_PROJECT": "Trust & Execute Preview - {0}",
+    "TRUST_AUTHORS": "Do you trust the authors of this project?",
 
     // Strings for Auto Update
     "DOWNLOAD_FAILED": "Download failed.",
@@ -945,10 +1034,10 @@ define({
     "CMD_FIND_DOCUMENT_SYMBOLS": "Find Document Symbols",
     "CMD_FIND_PROJECT_SYMBOLS": "Find Project Symbols",
 
-   // Remote debugging enabled
+    // Remote debugging enabled
     "REMOTE_DEBUGGING_ENABLED": "Remote debugging enabled on localhost:",
 
-   // Remote debugging port argument is invalid
+    // Remote debugging port argument is invalid
     "REMOTE_DEBUGGING_PORT_INVALID": "Cannot enable remote debugging on port {0}. Port numbers should be between {1} and {2}.",
 
     //Associate File Type to External App
@@ -956,7 +1045,7 @@ define({
 
     "ASSOCIATE_GRAPHICS_FILE_TO_DEFAULT_APP_TITLE": "Open Graphic Files in External Editors.",
     "ASSOCIATE_GRAPHICS_FILE_TO_DEFAULT_APP_MSG": "Your current folder has graphic file types which are not supported by {APP_NAME}.<br/>You can now associate specific file types with external editors. Once associated, you can open graphic files like .xd, .psd, .jpg, .png, .ai, .svg in their default applications by double clicking on the files in File Tree.<br/><br/>Please click on ‘Ok’ button to associate the graphic file types with their respective default applications.",
-    "ASSOCIATE_GRAPHICS_FILE_TO_DEFAULT_APP_CNF_MSG": "Following file types have been successfully associated with default applications.<br/>{0} You have the option to change your preference on whether you delete/add new file type associations in brackets.json by going to “Debug->Open Preferences File” menu.",
+    "ASSOCIATE_GRAPHICS_FILE_TO_DEFAULT_APP_CNF_MSG": "Following file types have been successfully associated with default applications.<br/>{0} You have the option to change your preference on whether you delete/add new file type associations in phcode.json by going to “Debug->Open Preferences File” menu.",
 
     // Phoenix extension
     "UNSUPPORTED_BROWSER_TITLE": "Browser Is Not Supported",
@@ -966,7 +1055,7 @@ define({
     "UNSUPPORTED_BROWSER_OPEN_FOLDER_TITLE": "Local Folder Access Unsupported by Browser",
     "UNSUPPORTED_BROWSER_OPEN_FOLDER": "Sorry, it looks like your current browser doesn't support opening local folders. For this feature, we recommend using Chrome, Edge, or Opera. <br/><br/>Alternatively, we're working on developing native apps for Windows, Mac, Linux, iOS, and Android to provide full support. <a href=\"https://github.com/phcode-dev/phoenix/discussions/1047\" target=\"_blank\">Stay tuned for updates!</a>",
     "ATTENTION_SAFARI_USERS": "Attention Safari Users",
-    "ATTENTION_SAFARI_USERS_MESSAGE": "<span>Safari automatically deletes website data if a site is not revisited within 7 days. {APP_NAME} relies on browser storage to save your projects, which may be removed due to this policy. <br/> <br/><strong>To prevent data loss</strong>, please <strong>download</strong> your projects before closing the tab or stay tuned for our <strong>upcoming Web and native Mac/iOS apps</strong>.</span>",
+    "ATTENTION_SAFARI_USERS_MESSAGE": "<span>Safari automatically deletes website data if a site is not revisited within 7 days. {APP_NAME} relies on browser storage to save your projects, which may be removed due to this policy. <br/> <br/>It is recommended to<strong> download the macOS desktop app</strong> from <a href='https://phcode.io' target='_blank' style='color: white'>https://phcode.io</a></span>",
     "CANNOT_PUBLISH_LARGE_PROJECT": "Cannot Publish Large Project",
     "CANNOT_PUBLISH_LARGE_PROJECT_MESSAGE": "Phoenix is still in experimental alpha. We have not yet enabled sync of projects with greater than 500 files.",
     "SHARE_WEBSITE": "Publish and Share Website?",
@@ -1008,8 +1097,8 @@ define({
     "PREVIEW": "Preview",
     "BUILD_WEBSITE": "Build Website",
     "VIEW_MORE": "View More...",
-    "NEW_PROJECT_NOTIFICATION": "Click this icon to<br/>create a new project. </br> <a href='#' style='float:right;'>ok</a>",
-    "BEAUTIFY_CODE_NOTIFICATION": "Click here or press <b>`{0}`</b> to Beautify code. </br> <img src=\"extensions/default/Phoenix/images/beautify.gif\">  <br/> <a href='#' style='float:right;'>ok</a>",
+    "NEW_PROJECT_NOTIFICATION": "Click this icon to create a new project. </br> <img src=\"styles/images/new_project.png\">  <br/> <a href='#' style='float:right;'>ok</a>",
+    "BEAUTIFY_CODE_NOTIFICATION": "Click here or press <b>`{0}`</b> to Beautify code. </br> <img src=\"styles/images/beautify.gif\">  <br/> <a href='#' style='float:right;'>ok</a>",
     "DEFAULT_PROJECT_NOTIFICATION": "Click here to open the <br/><b>default project</b> in phoenix. </br> <a href='#' style='float:right;'>ok</a>",
     "DIRECTORY_REPLACE_MESSAGE": "The selected folder <span class='dialog-filename'>{0}</span> is not empty. Are you sure you want to replace the folder contents with the project?",
     "BUILD_WEBSITE_SECTION": "Build Website",
@@ -1023,6 +1112,9 @@ define({
     "WEBPAGE_BOOTSTRAP_EXAMPLES": "Bootstrap Examples",
     "PROJECTS_AT_A_GLANCE": "Your Projects at a glance",
     "PROJECT_AT_GLANCE_DESCRIPTION": "Watch video to get started.",
+    "PROJECT_FROM_BROWSER": "Stored in Your Browser",
+    "PROJECT_FROM_BROWSER_TERSE": "Browser Storage",
+    "PROJECT_SHOW_ON_STARTUP": "Show This Dialogue On Startup",
     // Guided tour
     "GUIDED_LIVE_PREVIEW": "Make some code changes in the HTML file to see live preview. </br> <a href='#' style='float:right;'>ok</a>",
     "GUIDED_LIVE_PREVIEW_POPOUT": "Click this button to popout live preview to a new tab. </br> <a href='#' style='float:right;'>ok</a>",

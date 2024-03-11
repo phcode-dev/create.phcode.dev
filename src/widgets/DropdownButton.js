@@ -39,12 +39,17 @@ define(function (require, exports, module) {
 
 
     // Load dependent modules
-    var DropdownEventHandler    = require("utils/DropdownEventHandler").DropdownEventHandler,
+    const DropdownEventHandler    = require("utils/DropdownEventHandler").DropdownEventHandler,
         EventDispatcher         = require("utils/EventDispatcher"),
         WorkspaceManager        = require("view/WorkspaceManager"),
         Menus                   = require("command/Menus"),
         ViewUtils               = require("utils/ViewUtils"),
         _                       = require("thirdparty/lodash");
+
+    const EVENT_SELECTED = "select",
+        EVENT_LIST_RENDERED = "listRendered",
+        EVENT_DROPDOWN_SHOWN = "shown",
+        EVENT_DROPDOWN_CLOSED = "closed";
 
     /**
      * Creates a single dropdown-button instance. The DOM node is created but not attached to
@@ -60,9 +65,17 @@ define(function (require, exports, module) {
      * @param {?function(*, number):!string|{html:string, enabled:boolean} itemRenderer  Optional function to
      *          convert a single item to HTML (see itemRenderer() docs below). If not provided, items are
      *          assumed to be plain text strings.
+     * @param {Object?} options
+     * @param {boolean?} options.enableFilter - true if you need to enable filter by typing
+     * @param {function(userSearchText, elementText, elementIndex)?} options.customFilter - Optional. When `enableFilter`
+     *      is enabled, this function is used as a custom filtering callback. It receives the user's search text, the
+     *      text of the element being filtered, and the element's index. Return `true` to display the list item, or `false` to hide it.
      */
-    function DropdownButton(label, items, itemRenderer) {
+    function DropdownButton(label, items, itemRenderer, options) {
         this.items = items;
+        options = options || {};
+        this.enableFilter = (typeof options.enableFilter === 'boolean' ? options.enableFilter : true);
+        this.customFilter = options.customFilter;
 
         this.itemRenderer = itemRenderer || this.itemRenderer;
 
@@ -81,6 +94,13 @@ define(function (require, exports, module) {
      * @type {!Array.<*>}
      */
     DropdownButton.prototype.items = null;
+
+    /**
+     * This is filter text corresponding to each items. it will be used to filter the items based on
+     * the keyboard key presses the user does to enter search filter in popup.
+     * @type {null}
+     */
+    DropdownButton.prototype.itemsSearchFilterText = null;
 
     /**
      * The clickable button. Available as soon as the DropdownButton is constructed.
@@ -139,6 +159,16 @@ define(function (require, exports, module) {
     };
 
     /**
+     * returns true if the dropdown is open
+     */
+    DropdownButton.prototype.isOpen = function () {
+        if (this.$dropdown) {
+            return true;
+        }
+        return false;
+    };
+
+    /**
      * Called for each item when rendering the dropdown.
      * @param {*} item from items array
      * @param {number} index in items array
@@ -152,41 +182,56 @@ define(function (require, exports, module) {
 
     /**
      * Converts the list of item objects into HTML list items in format required by DropdownEventHandler
-     * @param {!jQueryObject} parent The dropdown element
+     * @param {!jQueryObject} $parent The dropdown element
      * @return {!jQueryObject} The dropdown element with the rendered list items appended.
      */
-    DropdownButton.prototype._renderList = function (parent) {
-        if (!parent) {
+    DropdownButton.prototype._renderList = function ($parent) {
+        if (!$parent) {
             return null;
         }
 
-        var html = "";
+        const self = this;
+        this.itemsSearchFilterText = [];
+        let html = "";
+        this.searchStr = "";
+        if(self.enableFilter){
+            $parent.append(`<li class="sticky-li-top forced-hidden"><a class='stylesheet-link'><i class="fa fa-search" aria-hidden="true"></i>&nbsp;&nbsp;<span class="searchTextSpan"></span></a></li>`);
+        }
         this.items.forEach(function (item, i) {
+            self.itemsSearchFilterText[i] = "";
             if (item === "---") {
-                html += "<li class='divider'></li>";
+                $parent.append("<li class='divider'></li>");
             } else {
-                var rendered = this.itemRenderer(item, i),
-                    itemHtml = rendered.html || rendered,
+                let rendered = self.itemRenderer(item, i),
+                    itemHtml = rendered.html || rendered || "",
                     disabledClass = (rendered.html && !rendered.enabled) ? "disabled" : "";
 
-                html += "<li><a class='stylesheet-link " + disabledClass + "' data-index='" + i + "'>";
-                html += itemHtml;
-                html += "</a></li>";
+                if(rendered.$html){
+                    const $atag = $(`<a class='stylesheet-link ${disabledClass}' data-index='${i}'></a>`);
+                    $atag.append(rendered.$html);
+                    const $itemHtml = $(`<li data-index='${i}'></li>`).append($atag);
+                    self.itemsSearchFilterText[i] = $itemHtml.text();
+                    $parent.append($itemHtml);
+                } else {
+                    const $itemHtml = $(`<li data-index='${i}'><a class='stylesheet-link ${disabledClass}' data-index='${i}'>${itemHtml}</a></li>`);
+                    self.itemsSearchFilterText[i] = $itemHtml.text();
+                    $parent.append($itemHtml);
+                }
             }
         }.bind(this));
 
-        parent.append(html);
+        $parent.append(html);
 
         // Also trigger listRendered handler so that custom event handlers can be
         // set up for any custom UI in the list.
-        this.trigger("listRendered", parent);
+        this.trigger(EVENT_LIST_RENDERED, $parent);
 
         // Also need to re-register mouse event handlers with the updated list.
         if (this._dropdownEventHandler) {
-            this._dropdownEventHandler.reRegisterMouseHandlers(parent);
+            this._dropdownEventHandler.reRegisterMouseHandlers($parent);
         }
 
-        return parent;
+        return $parent;
     };
 
     /**
@@ -201,6 +246,7 @@ define(function (require, exports, module) {
         // Remove all list items and then re-create them from this.items.
         $("li", this.$dropdown).remove();
         this._renderList(this.$dropdown);
+        this._reposition();
     };
 
     /**
@@ -222,28 +268,8 @@ define(function (require, exports, module) {
         }
     };
 
-    /** Pops open the dropdown if currently closed. Does nothing if items.length == 0 */
-    DropdownButton.prototype.showDropdown = function () {
-        // Act like a plain old button if no items to show
-        if (!this.items.length) {
-            return;
-        }
-
-        if (this.$dropdown) {
-            return;
-        }
-
-        Menus.closeAll();
-
-        var $dropdown = $("<ul class='dropdown-menu dropdownbutton-popup' tabindex='-1'>")
-            .addClass(this.dropdownExtraClasses)  // (no-op if unspecified)
-            .css("min-width", this.$button.outerWidth());  // do this before the clipping calcs below
-
-        this.$dropdown = $dropdown;
-        this._renderList(this.$dropdown)
-            .appendTo($("body"))
-            .data("attached-to", this.$button[0]);  // keep ModalBar open while dropdown focused
-
+    DropdownButton.prototype._reposition = function () {
+        const $dropdown = this.$dropdown;
         // Calculate position of dropdown
         var toggleOffset = this.$button.offset(),
             posLeft      = toggleOffset.left,
@@ -275,9 +301,35 @@ define(function (require, exports, module) {
             top: posTop,
             width: $dropdown.width() + scrollWidth
         });
+    };
+
+    /** Pops open the dropdown if currently closed. Does nothing if items.length == 0 */
+    DropdownButton.prototype.showDropdown = function () {
+        // Act like a plain old button if no items to show
+        if (!this.items.length) {
+            return;
+        }
+
+        if (this.$dropdown) {
+            return;
+        }
+
+        Menus.closeAll();
+        this.searchStr = "";
+        var $dropdown = $("<ul class='dropdown-menu dropdownbutton-popup' tabindex='-1'>")
+            .addClass(this.dropdownExtraClasses)  // (no-op if unspecified)
+            .css("min-width", this.$button.outerWidth());  // do this before the clipping calcs below
+
+        this.$dropdown = $dropdown;
+        this._renderList(this.$dropdown)
+            .appendTo($("body"))
+            .data("attached-to", this.$button[0]);  // keep ModalBar open while dropdown focused
+
+        this._reposition();
 
         // Attach event handlers
-        this._dropdownEventHandler = new DropdownEventHandler($dropdown, this._onSelect.bind(this), this._onDropdownClose.bind(this));
+        this._dropdownEventHandler = new DropdownEventHandler($dropdown, this._onSelect.bind(this),
+            this._onDropdownClose.bind(this), this._onKeyDown.bind(this));
         this._dropdownEventHandler.open();
 
         window.document.body.addEventListener("mousedown", this._onClickOutside, true);
@@ -286,6 +338,7 @@ define(function (require, exports, module) {
         // Manage focus
         this._lastFocus = window.document.activeElement;
         $dropdown.focus();
+        this.trigger(EVENT_DROPDOWN_SHOWN);
     };
 
     /**
@@ -304,6 +357,63 @@ define(function (require, exports, module) {
 
         this._dropdownEventHandler = null;
         this.$dropdown = null;  // already remvoed from DOM automatically by PopUpManager
+        this.trigger(EVENT_DROPDOWN_CLOSED);
+    };
+
+    /**
+     * hides all elements in popup that doesn't match the given search string, also shows the search bar in popup
+     * @param searchString
+     */
+    DropdownButton.prototype.filterDropdown = function (searchString) {
+        this.searchStr = searchString;
+        const $stickyLi = this.$dropdown.find('li.sticky-li-top');
+        for(let i=0; i<this.itemsSearchFilterText.length; i++){
+            const itemText = this.itemsSearchFilterText[i];
+            const $liElementAtIndex = this.$dropdown.find(`li[data-index='${i}']`);
+            let shouldShow = itemText && itemText.toLowerCase().includes(searchString.toLowerCase());
+            if(this.customFilter){
+                shouldShow = this.customFilter(searchString, itemText, i);
+            }
+            if(shouldShow){
+                $liElementAtIndex.removeClass('forced-hidden');
+            } else {
+                $liElementAtIndex.addClass('forced-hidden');
+            }
+        }
+        if(searchString) {
+            $stickyLi.removeClass('forced-hidden');
+            $stickyLi.find('.searchTextSpan').text(searchString);
+        } else {
+            $stickyLi.addClass('forced-hidden');
+        }
+    };
+
+    DropdownButton.prototype._onKeyDown = function (event) {
+        if(!this.enableFilter){
+            return false;
+        }
+        const self = this;
+        if((event.ctrlKey || event.metaKey) && event.key === 'v') {
+            Phoenix.app.clipboardReadText().then(text=>{
+                self.searchStr += text;
+                self.filterDropdown(this.searchStr);
+            });
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+        } else if (event.key.length === 1) {
+            this.searchStr += event.key;
+        } else if (event.key === 'Backspace') {
+            // Remove the last character when Backspace is pressed
+            this.searchStr  = this.searchStr.slice(0, -1);
+        } else {
+            // bubble up, not for us to handle
+            return false;
+        }
+        this.filterDropdown(this.searchStr);
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        return true;
     };
 
     /** Closes the dropdown if currently open */
@@ -345,9 +455,14 @@ define(function (require, exports, module) {
      */
     DropdownButton.prototype._onSelect = function ($link) {
         var itemIndex = Number($link.data("index"));
-        this.trigger("select", this.items[itemIndex], itemIndex);
+        this.trigger(EVENT_SELECTED, this.items[itemIndex], itemIndex);
     };
 
 
     exports.DropdownButton = DropdownButton;
+    // public events
+    exports.EVENT_SELECTED = EVENT_SELECTED;
+    exports.EVENT_LIST_RENDERED = EVENT_LIST_RENDERED;
+    exports.EVENT_DROPDOWN_SHOWN = EVENT_DROPDOWN_SHOWN;
+    exports.EVENT_DROPDOWN_CLOSED = EVENT_DROPDOWN_CLOSED;
 });

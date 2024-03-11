@@ -29,10 +29,9 @@ define(function (require, exports, module) {
 
 
     var AppInit          = require("utils/AppInit"),
-        StatusBarHTML    = require("text!widgets/StatusBar.html"),
         Strings          = require("strings"),
-        WorkspaceManager = require("view/WorkspaceManager"),
-        Mustache         = require("thirdparty/mustache/mustache");
+        TaskManager    = require("features/TaskManager"),
+        WorkspaceManager = require("view/WorkspaceManager");
 
     var _init = false;
 
@@ -47,13 +46,14 @@ define(function (require, exports, module) {
     var $statusInfo,
         $statusBar,
         $indicators,
-        $busyIndicator;
+        $statusTasks;
 
     /**
      * Shows the 'busy' indicator
      * @param {boolean} updateCursor Sets the cursor to "wait"
      */
     function showBusyIndicator(updateCursor) {
+        console.warn("StatusBar.showBusyIndicator API is deprecated. Please use new module `(features/TaskManager).addNewTask` instead");
         if (!_init) {
             console.error("StatusBar API invoked before status bar created");
             return;
@@ -64,13 +64,14 @@ define(function (require, exports, module) {
             $("*").addClass("busyCursor");
         }
 
-        $busyIndicator.addClass("spin");
+        TaskManager._setLegacyExtensionBusy(true);
     }
 
     /**
      * Hides the 'busy' indicator
      */
     function hideBusyIndicator() {
+        console.warn("StatusBar.hideBusyIndicator API is deprecated. Please use new module `(features/TaskManager).addNewTask` instead");
         if (!_init) {
             console.error("StatusBar API invoked before status bar created");
             return;
@@ -83,7 +84,7 @@ define(function (require, exports, module) {
             $("*").removeClass("busyCursor");
         }
 
-        $busyIndicator.removeClass("spin");
+        TaskManager._setLegacyExtensionBusy(false);
     }
 
     /**
@@ -127,8 +128,7 @@ define(function (require, exports, module) {
         } else {
             // No positioning is provided, put on left end of indicators, but
             // to right of "busy" indicator (which is usually hidden).
-            var $busyIndicator = $("#status-bar .spinner");
-            $indicator.insertBefore($busyIndicator);
+            $indicator.insertBefore($statusTasks);
         }
     }
 
@@ -187,14 +187,14 @@ define(function (require, exports, module) {
      * Hide the statusbar Indicators
      */
     function hideIndicators() {
-        $indicators.css("display", "none");
+        $indicators.addClass("hide-status-indicators");
     }
 
     /**
      * Show the statusbar Indicators
      */
     function showIndicators() {
-        $indicators.css("display", "");
+        $indicators.removeClass("hide-status-indicators");
     }
 
 
@@ -246,13 +246,11 @@ define(function (require, exports, module) {
     }
 
     AppInit.htmlReady(function () {
-        var $parent = $(".main-view .content");
-        $parent.append(Mustache.render(StatusBarHTML, Strings));
-
+        $("#status-overwrite").text(Strings.STATUSBAR_INSERT);
         // Initialize items dependent on HTML DOM
         $statusBar          = $("#status-bar");
         $indicators         = $("#status-indicators");
-        $busyIndicator      = $("#status-bar .spinner");
+        $statusTasks        = $("#status-tasks");
         $statusInfo         = $("#status-info");
 
         _init = true;

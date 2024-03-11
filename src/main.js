@@ -20,6 +20,84 @@
  */
 
 /**
+ * global util to convert jquery/js promise to a js promise. This can be used as an adapter when you do not know if the
+ * promise in hand is a js or jquery deferred promise. This function will always return a normal js promise.
+ * @param jqueryOrJSPromise
+ * @returns {{finally}|{then}|{catch}|*}
+ */
+window.jsPromise = function (jqueryOrJSPromise) {
+    if(jqueryOrJSPromise && jqueryOrJSPromise.catch && jqueryOrJSPromise.then && jqueryOrJSPromise.finally){
+        // this should be a normal js promise return as is
+        return  jqueryOrJSPromise;
+    }
+    if(!jqueryOrJSPromise ||
+        (jqueryOrJSPromise && !jqueryOrJSPromise.fail) || (jqueryOrJSPromise && !jqueryOrJSPromise.done)){
+        console.error("this function expects a jquery promise with done and fail handlers");
+        throw new Error("this function expects a jquery promise with done and fail handlers");
+    }
+    return new Promise((resolve, reject)=>{
+        jqueryOrJSPromise
+            .done(resolve)
+            .fail(reject);
+    });
+};
+window.deferredToPromise = window.jsPromise;
+
+// splash screen updates for initial install which could take time, or slow networks.
+let trackedScriptCount = 0;
+function _setSplashScreenStatusUpdate(message1, message2) {
+    let splashScreenFrame = document.getElementById("splash-screen-frame");
+    if(!splashScreenFrame){
+        if(!window.debugMode){
+            // If not in debug mode & splash screen isn't there, we don't need to observe dom script update status
+            // to improve performance.
+            window.scriptObserver && window.scriptObserver.disconnect();
+            console.log('startup Watcher: Disconnected script load watcher.');
+        }
+        return false;
+    }
+    let displayBtn1 = splashScreenFrame.contentDocument.getElementById("load-status-display-btn");
+    let displayText2 = splashScreenFrame.contentDocument.getElementById("load-status-display-text");
+    displayBtn1.textContent = message1;
+    displayText2.textContent = message2;
+    return true;
+}
+
+// Callback function to execute when mutations are observed
+const callback = function(mutationsList) {
+    try{
+        // we have to guard here with try catch as this callback is executed on script load and any error
+        // here will break load
+        for(const mutation of mutationsList) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length >0 && mutation.addedNodes[0].src) {
+                trackedScriptCount++;
+                let scriptAddedSplit = mutation.addedNodes[0].src.split("/");
+                if(scriptAddedSplit.length > 0){
+                    let message = `Loading (${trackedScriptCount})`;
+                    if(window.Phoenix && window.Phoenix.firstBoot) {
+                        message = `Installing (${trackedScriptCount})`;
+                    }
+                    _setSplashScreenStatusUpdate(message, `${scriptAddedSplit[scriptAddedSplit.length-1]}`);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error in script mutation observer!", e);
+    }
+};
+const mainScripts = document.getElementById('main-scripts-head');
+const config = { childList: true};
+
+if(!Phoenix.browser.isTauri) {
+    // in tauri, there is no splash screen, so we dont do this.
+    // Create an observer instance linked to the callback function
+    window.scriptObserver = new MutationObserver(callback);
+
+    // Start observing the target node for configured mutations
+    window.scriptObserver.observe(mainScripts, config);
+}
+
+/**
  * The bootstrapping module for brackets. This module sets up the require
  * configuration and loads the brackets module.
  */
@@ -61,76 +139,9 @@ if (window.location.search.indexOf("testEnvironment") > -1) {
      * extension).
      */
     require.config({
-        locale: window.localStorage.getItem("locale") || window.navigator.language
+        locale: window.PhStore.getItem("locale") || window.navigator.language
     });
 }
-
-/**
- * global util to convert jquery/js promise to a js promise. This can be used as an adapter when you do not know if the
- * promise in hand is a js or jquery deferred promise. This function will always return a normal js promise.
- * @param jqueryOrJSPromise
- * @returns {{finally}|{then}|{catch}|*}
- */
-window.jsPromise = function (jqueryOrJSPromise) {
-    if(jqueryOrJSPromise && jqueryOrJSPromise.catch && jqueryOrJSPromise.then && jqueryOrJSPromise.finally){
-        // this should be a normal js promise return as is
-        return  jqueryOrJSPromise;
-    }
-    if(!jqueryOrJSPromise ||
-        (jqueryOrJSPromise && !jqueryOrJSPromise.fail) || (jqueryOrJSPromise && !jqueryOrJSPromise.done)){
-        console.error("this function expects a jquery promise with done and fail handlers");
-        throw new Error("this function expects a jquery promise with done and fail handlers");
-    }
-    return new Promise((resolve, reject)=>{
-        jqueryOrJSPromise
-            .done(resolve)
-            .fail(reject);
-    });
-};
-
-// splash screen updates for initial install which could take time, or slow networks.
-let trackedScriptCount = 0;
-function _setSplashScreenStatusUpdate(message1, message2) {
-    let splashScreenFrame = document.getElementById("splash-screen-frame");
-    if(!splashScreenFrame){
-        if(!window.debugMode){
-            // If not in debug mode & splash screen isn't there, we don't need to observe dom script update status
-            // to improve performance.
-            window.scriptObserver.disconnect();
-            console.log('startup Watcher: Disconnected script load watcher.');
-        }
-        return false;
-    }
-    let displayBtn1 = splashScreenFrame.contentDocument.getElementById("load-status-display-btn");
-    let displayText2 = splashScreenFrame.contentDocument.getElementById("load-status-display-text");
-    displayBtn1.textContent = message1;
-    displayText2.textContent = message2;
-    return true;
-}
-
-// Callback function to execute when mutations are observed
-const callback = function(mutationsList) {
-    for(const mutation of mutationsList) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length >0 && mutation.addedNodes[0].src) {
-            trackedScriptCount++;
-            let scriptAddedSplit = mutation.addedNodes[0].src.split("/");
-            if(scriptAddedSplit.length > 0){
-                let message = `Loading (${trackedScriptCount})`;
-                if(window.Phoenix && window.Phoenix.firstBoot) {
-                    message = `Installing (${trackedScriptCount})`;
-                }
-                _setSplashScreenStatusUpdate(message, `${scriptAddedSplit[scriptAddedSplit.length-1]}`);
-            }
-        }
-    }
-};
-const mainScripts = document.getElementById('main-scripts-head');
-const config = { childList: true};
-// Create an observer instance linked to the callback function
-window.scriptObserver = new MutationObserver(callback);
-
-// Start observing the target node for configured mutations
-window.scriptObserver.observe(mainScripts, config);
 
 define(function (require) {
 
@@ -140,17 +151,26 @@ define(function (require) {
     require(["utils/Metrics", "utils/Compatibility", "utils/EventDispatcher"], function () {
         window.Metrics = require("utils/Metrics");
         // Load the brackets module. This is a self-running module that loads and runs the entire application.
-        try{
-            require(["brackets"]);
-        } catch (err) {
-            // try a cache refresh (not a full reset). this will happen in the service worker in the background
-            window.refreshServiceWorkerCache && window.refreshServiceWorkerCache();
+        require(["brackets"], ()=>{}, (err)=>{
             // metrics api might not be available here as we were seeing no metrics raised. Only bugsnag there.
             window.logger && window.logger.reportError(err,
                 'Critical error when loading brackets. Trying to reload again.');
-            // wait for 3 seconds for bugsnag to send report.
-            setTimeout(window.location.reload, 3000);
-        }
+            alert("Oops! Something went wrong. Trying to restart app...");
+            // try a cache reset
+            if(window._resetCacheIfNeeded){
+                window._resetCacheIfNeeded(true)
+                    .finally(()=>{
+                        // wait for 3 seconds for bugsnag to send report.
+                        setTimeout(()=>{
+                            location.reload();
+                        }, 3000);
+                    });
+            } else {
+                // wait for 3 seconds for bugsnag to send report.
+                setTimeout(()=>{
+                    location.reload();
+                }, 3000);
+            }
+        });
     });
 });
-

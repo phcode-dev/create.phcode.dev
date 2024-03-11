@@ -218,11 +218,11 @@ define(function (require, exports, module) {
      * @param {string} commandId The ID for the command whose keyboard shortcut to show.
      */
     FindBar.prototype._addShortcutToTooltip = function ($elem, commandId) {
-        var replaceShortcut = KeyBindingManager.getKeyBindings(commandId)[0];
+        const replaceShortcut = KeyBindingManager.getKeyBindingsDisplay(commandId);
         if (replaceShortcut) {
             var oldTitle = $elem.attr("title");
             oldTitle = (oldTitle ? oldTitle + " " : "");
-            $elem.attr("title", oldTitle + "(" + KeyBindingManager.formatKeyDescriptor(replaceShortcut.displayKey) + ")");
+            $elem.attr("title", oldTitle + "(" + replaceShortcut + ")");
         }
     };
 
@@ -391,11 +391,19 @@ define(function (require, exports, module) {
                 } else if (e.keyCode === KeyEvent.DOM_VK_DOWN) {
                     e.preventDefault();
                     e.stopPropagation();
-                    self.trigger("selectNextResult");
+                    if(self._options.multifile){
+                        self.trigger("selectNextResult");
+                        return;
+                    }
+                    self.trigger("doFind", false);
                 } else if (e.keyCode === KeyEvent.DOM_VK_UP) {
                     e.preventDefault();
                     e.stopPropagation();
-                    self.trigger("selectPrevResult");
+                    if(self._options.multifile){
+                        self.trigger("selectPrevResult");
+                        return;
+                    }
+                    self.trigger("doFind", true);
                 } else if (e.keyCode === KeyEvent.DOM_VK_PAGE_DOWN) {
                     e.preventDefault();
                     e.stopPropagation();

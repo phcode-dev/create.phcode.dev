@@ -21,6 +21,7 @@
 
 define(function (require, exports, module) {
 
+    require("spec/Tauri-platform-test");
     require("spec/utframework-suite-test");
     require("spec/Async-test");
     require("spec/CommandManager-test");
@@ -36,6 +37,7 @@ define(function (require, exports, module) {
     require("spec/EventDispatcher-test");
     require("spec/EventManager-test");
     require("spec/ExtensionInterface-test");
+    require("spec/ExtensionLoader-integ-test");
     require("spec/ExtensionLoader-test");
     require("spec/ExtensionManager-test");
     require("spec/FeatureGate-test");
@@ -55,6 +57,7 @@ define(function (require, exports, module) {
     require("spec/JSUtils-test");
     require("spec/JSUtils-integ-test");
     require("spec/KeyBindingManager-test");
+    require("spec/KeybindingManager-integ-test");
     require("spec/LanguageManager-test");
     require("spec/LanguageManager-integ-test");
     require("spec/LowLevelFileIO-test");
@@ -88,6 +91,7 @@ define(function (require, exports, module) {
     require("spec/PreferencesManager-integ-test");
     require("spec/MainViewFactory-integ-test");
     require("spec/MainViewManager-integ-test");
+    require("spec/Keyboard-nav-integ-test");
     require("spec/Menu-integ-test");
     require("spec/ProjectManager-integ-test");
     require("spec/QuickOpen-integ-test");
@@ -101,13 +105,22 @@ define(function (require, exports, module) {
     require("spec/BeautificationManager-test");
     require("spec/Template-for-integ-test");
     require("spec/LiveDevelopmentMultiBrowser-test");
-    require("spec/PhoenixComm-integ-test");
     require("spec/NewFileContentManager-test");
     require("spec/InstallExtensionDialog-integ-test");
     require("spec/ExtensionInstallation-test");
     require("spec/NotificationUI-test");
+    require("spec/Storage-integ-test");
+    require("spec/file-encoding-integ-test");
+    require("spec/StateManager-test");
+    require("spec/TaskManager-integ-test");
+    // Integrated extension tests
+    require("spec/Extn-InAppNotifications-integ-test");
+    require("spec/Extn-RemoteFileAdapter-integ-test");
+    require("spec/Extn-NavigationAndHistory-integ-test");
+    require("spec/Extn-RecentProjects-integ-test");
+    // Node Tests
+    require("spec/NodeConnection-test");
     // todo TEST_MODERN
     // require("spec/LanguageTools-test"); LSP tests. disabled for now
-    // require("spec/NodeConnection-test"); deprecate and remove node connection
     // require("spec/Menu-native-integ-test"); evaluate after we have native menus in os installed builds
 });

@@ -29,16 +29,21 @@ define(function (require, exports, module) {
     let Commands            = require("command/Commands"),
         EventDispatcher     = require("utils/EventDispatcher"),
         KeyBindingManager   = require("command/KeyBindingManager"),
+        Keys       = require("command/Keys"),
+        Strings    = require("strings"),
         StringUtils         = require("utils/StringUtils"),
         CommandManager      = require("command/CommandManager"),
         PopUpManager        = require("widgets/PopUpManager"),
         ViewUtils           = require("utils/ViewUtils"),
         Metrics             = require("utils/Metrics"),
+        MainViewManager     = require("view/MainViewManager"),
+        AppInit                 = require("utils/AppInit"),
         DeprecationWarning  = require("utils/DeprecationWarning");
 
     // make sure the global brackets letiable is loaded
     require("utils/Global");
 
+    const KEY = Keys.KEY;
     /**
      * Brackets Application Menu Constants
      * @enum {string}
@@ -49,6 +54,7 @@ define(function (require, exports, module) {
         FIND_MENU: "find-menu",
         VIEW_MENU: "view-menu",
         NAVIGATE_MENU: "navigate-menu",
+        DEBUG_MENU: "debug-menu",
         HELP_MENU: "help-menu"
     };
 
@@ -86,7 +92,8 @@ define(function (require, exports, module) {
         FILE_OPEN_CLOSE_COMMANDS: {sectionMarker: Commands.FILE_NEW},
         FILE_SAVE_COMMANDS: {sectionMarker: Commands.FILE_SAVE},
         FILE_LIVE: {sectionMarker: Commands.FILE_LIVE_FILE_PREVIEW},
-        FILE_EXTENSION_MANAGER: {sectionMarker: Commands.FILE_EXTENSION_MANAGER},
+        FILE_SETTINGS: {sectionMarker: Commands.FILE_EXTENSION_MANAGER},
+        FILE_EXTENSION_MANAGER: {sectionMarker: Commands.FILE_EXTENSION_MANAGER}, // deprecated. here for legacy support
 
         EDIT_UNDO_REDO_COMMANDS: {sectionMarker: Commands.EDIT_UNDO},
         EDIT_TEXT_COMMANDS: {sectionMarker: Commands.EDIT_CUT},
@@ -101,7 +108,7 @@ define(function (require, exports, module) {
         FIND_REPLACE_COMMANDS: {sectionMarker: Commands.CMD_REPLACE},
 
         VIEW_HIDESHOW_COMMANDS: {sectionMarker: Commands.VIEW_HIDE_SIDEBAR},
-        VIEW_FONTSIZE_COMMANDS: {sectionMarker: Commands.VIEW_INCREASE_FONT_SIZE},
+        VIEW_FONTSIZE_COMMANDS: {sectionMarker: Commands.VIEW_ZOOM_SUBMENU},
         VIEW_TOGGLE_OPTIONS: {sectionMarker: Commands.TOGGLE_ACTIVE_LINE},
 
         NAVIGATE_GOTO_COMMANDS: {sectionMarker: Commands.NAVIGATE_QUICK_OPEN},
@@ -132,15 +139,6 @@ define(function (require, exports, module) {
     let SUBMENU = "SUBMENU";
 
     /**
-     * Error Codes from Brackets Shell
-     * @enum {number}
-     */
-    let NO_ERROR           = 0,
-        ERR_UNKNOWN        = 1,
-        ERR_INVALID_PARAMS = 2,
-        ERR_NOT_FOUND      = 3;
-
-    /**
      * Maps menuID's to Menu objects
      * @type {Object.<string, Menu>}
      */
@@ -157,6 +155,12 @@ define(function (require, exports, module) {
      * @type {Object.<string, MenuItem>}
      */
     let menuItemMap = {};
+
+    /**
+     * Maps menuItemID's to ContextMenu objects
+     * @type {Object.<string, ContextMenu>}
+     */
+    let subMenuItemMap = {};
 
     /**
      * Retrieves the Menu object for the corresponding id.
@@ -214,11 +218,14 @@ define(function (require, exports, module) {
         return $("#" + StringUtils.jQueryIdEscape(id)).get(0);
     }
 
-    function _addKeyBindingToMenuItem($menuItem, key, displayKey) {
+    function _addKeyBindingToMenuItem(commandID, $menuItem, key, displayKey) {
         let $shortcut = $menuItem.find(".menu-shortcut");
 
         if ($shortcut.length === 0) {
-            $shortcut = $("<span class='menu-shortcut' />");
+            const html = KeyBindingManager.canAssignBinding(commandID)?
+                "<span class='menu-shortcut' />" :
+                "<span class='menu-shortcut fixed-shortcut' />";
+            $shortcut = $(html);
             $menuItem.append($shortcut);
         }
 
@@ -227,13 +234,14 @@ define(function (require, exports, module) {
     }
 
     function _addExistingKeyBinding(menuItem) {
-        let bindings = KeyBindingManager.getKeyBindings(menuItem.getCommand().getID()),
+        const commandID = menuItem.getCommand().getID();
+        let bindings = KeyBindingManager.getKeyBindings(commandID),
             binding = null;
 
         if (bindings.length > 0) {
             // add the latest key binding
             binding = bindings[bindings.length - 1];
-            _addKeyBindingToMenuItem($(_getHTMLMenuItem(menuItem.id)), binding.key, binding.displayKey);
+            _addKeyBindingToMenuItem(commandID, $(_getHTMLMenuItem(menuItem.id)), binding.key, binding.displayKey);
         }
 
         return binding;
@@ -590,11 +598,30 @@ define(function (require, exports, module) {
             $menuItem = $("<li><hr class='divider' id='" + id + "' /></li>");
         } else {
             // Create the HTML Menu
-            $menuItem = $("<li><a href='#' id='" + id + "'> <span class='menu-name'></span></a></li>");
+            let keyboardIcon = '';
+            if(KeyBindingManager.canAssignBinding(commandID)){
+                keyboardIcon = `<span class='keyboard-icon' title='${Strings.KEYBOARD_SHORTCUT_CHANGE_TITLE}'><i class="fa-regular fa-keyboard"></i></span>`;
+            }
+            $menuItem = $("<li><a href='#' class='menuAnchor' id='" + id + "'> <span class='menu-name'></span>" +
+                `<span class='right-pusher'></span>${keyboardIcon}`+
+                "</a></li>");
+            const $menuAnchor = $menuItem.find(".menuAnchor");
 
-            $menuItem.on("click", function () {
+            $menuItem.find(".keyboard-icon").on("click", (event)=>{
+                KeyBindingManager.showShortcutSelectionDialog(command);
+                event.preventDefault();
+                event.stopPropagation();
+            });
+
+            $menuItem.on("click", function (event) {
+                if($menuAnchor.hasClass('disabled')){
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return true;
+                }
                 Metrics.countEvent(Metrics.EVENT_TYPE.UI_MENU, "click", menuItem._command.getID());
                 logger.leaveTrail("UI Menu Click: " + menuItem._command.getID());
+                MainViewManager.focusActivePane();
                 if(menuItem._command._options.eventSource){
                     menuItem._command.execute({
                         eventSource: CommandManager.SOURCE_UI_MENU_CLICK,
@@ -607,7 +634,21 @@ define(function (require, exports, module) {
 
             let self = this;
             $menuItem.on("mouseenter", function () {
+                // This is to prevent size jumps when the keyboard
+                // icon hides and shows as selection changes
+                const currentWidth = $(this).width(); // Get the current width
+                $(this).css('min-width', currentWidth + 'px');
                 self.closeSubMenu();
+                // now show selection
+                $menuItem.parent().find(".menuAnchor").removeClass("selected");
+                if(!$menuAnchor.hasClass('disabled')){
+                    $menuAnchor.addClass("selected");
+                }
+            });
+            $menuItem.on("mouseleave", function () {
+                $(this).css('min-width', '');
+                self.closeSubMenu();
+                $menuItem.find(".menuAnchor").removeClass("selected");
             });
         }
 
@@ -752,24 +793,35 @@ define(function (require, exports, module) {
         // create MenuItem
         let menuItem = new MenuItem(menuItemID, SUBMENU);
         menuItemMap[menuItemID] = menuItem;
+        subMenuItemMap[menuItemID] = menu;
 
         menu.parentMenuItem = menuItem;
 
         // create MenuItem DOM
         // Create the HTML MenuItem
-        let $menuItem = $("<li><a href='#' id='" + menuItemID + "'> "   +
+        let $menuItem = $("<li><a class='sub-menu-item menuAnchor' href='#' id='" + menuItemID + "'> "   +
                          "<span class='menu-name'>" + name + "</span>" +
-                         "<span style='float: right'>&rtrif;</span>"   +
+                         "<span class='right-pusher'></span>" +
+                         "<span>&rtrif;</span>"   +
                          "</a></li>");
 
         let self = this;
         $menuItem.on("mouseenter", function(e) {
+            const currentWidth = $(this).width(); // Get the current width
+            $(this).css('min-width', currentWidth + 'px'); // Set min-width to the current width
             if (self.openSubMenu && self.openSubMenu.id === menu.id) {
                 return;
             }
             self.closeSubMenu();
             self.openSubMenu = menu;
             menu.open();
+            $menuItem.parent().find(".menuAnchor").removeClass("selected");
+            $menuItem.find(".menuAnchor").addClass("selected");
+        });
+
+        $menuItem.on("mouseleave", function () {
+            $(this).css('min-width', '');
+            $menuItem.find(".menuAnchor").removeClass("selected");
         });
 
         // Insert menu item
@@ -832,6 +884,7 @@ define(function (require, exports, module) {
 
 
         delete menuItemMap[parentMenuItem.id];
+        delete subMenuItemMap[parentMenuItem.id];
         delete contextMenuMap[subMenuID];
     };
 
@@ -943,7 +996,7 @@ define(function (require, exports, module) {
                 }
             });
         } else {
-            _addKeyBindingToMenuItem($(_getHTMLMenuItem(this.id)), keyBinding.key, keyBinding.displayKey);
+            _addKeyBindingToMenuItem(this._command.getID(), $(_getHTMLMenuItem(this.id)), keyBinding.key, keyBinding.displayKey);
         }
     };
 
@@ -972,11 +1025,125 @@ define(function (require, exports, module) {
         }
     };
 
+    let lastOpenedMenuID = 'file-menu';
     /**
      * Closes all menus that are open
      */
     function closeAll() {
+        const $openDropdownMenuList = $("#titlebar .dropdown.open");
+        if($openDropdownMenuList.length){
+            // this means the title bar has focus on close, and we have to focus editor in this case.
+            MainViewManager.focusActivePane();
+        }
+        if(getOpenMenu()){
+            lastOpenedMenuID = getOpenMenu();
+        }
         $(".dropdown").removeClass("open");
+    }
+
+    function _closeAllSubMenus() {
+        for(let menu of Object.values(menuMap)){
+            menu.closeSubMenu();
+        }
+    }
+
+    function openMenu(id) {
+        if(!id){
+            id = lastOpenedMenuID;
+        }
+        if (!menuMap[id]) {
+            console.error("openMenu- no such menu: " + id);
+            return null;
+        }
+        $(`#${getDropdownToggleMenuID(id)}`).click();
+    }
+
+    /**
+     * returns the currently open menu id if present or null
+     * @return {null|string}
+     */
+    function getOpenMenu() {
+        const $openDropdownMenuList = $("#titlebar .dropdown.open");
+        if($openDropdownMenuList.length !== 1){
+            return null;
+        }
+        return $openDropdownMenuList[0].id;
+    }
+
+    function getDropdownToggleMenuID(id) {
+        return `${id}-dropdown-toggle`;
+    }
+
+    let assignedShortcutsMenus = {};
+    let altKeyReleased = true;
+    window.document.body.addEventListener(
+        "keyup",
+        (event)=>{
+            if(event.key === KEY.ALT){
+                altKeyReleased = true;
+            }
+        },
+        true
+    );
+    function _addAltMenuShortcut(menuName, id) {
+        if (brackets.platform === "mac") {
+            // Alt menu shortcuts are unavailable on macOS due to its UI conventions(Alt is reserved for AltGr
+            // international keyboard typing).
+            // On macOS, menus can be accessed by double-pressing the Command key instead.
+            return;
+        }
+        let shortCutKey = menuName[0].toUpperCase();
+        if(assignedShortcutsMenus[shortCutKey]){
+            assignedShortcutsMenus[shortCutKey].push({menuName, id});
+            // now the array may have second leter shortcut like Eg. for like letter i = [Find] sinse File is already
+            // registered with F. So when we try to insert a new menu item say `Inspect` which should ideally take
+            // precedence for the i key shortcut, we have to remove all second elemnts in array that doent start with
+            // the first letter shortcut.
+            const newShortcutList = [];
+            for(let menu of assignedShortcutsMenus[shortCutKey]){
+                if(menu.menuName.toUpperCase().startsWith(shortCutKey)){
+                    // remove all shortcuts that doesnt have the first letter as the shortcut
+                    newShortcutList.push(menu);
+                }
+            }
+            assignedShortcutsMenus[shortCutKey] = newShortcutList;
+            // the shortcut key is already registered, check if can use the second letter to register
+            // an alternate single letter shortcut
+            const secondLetterShortCutKey = menuName[1];
+            if(secondLetterShortCutKey && assignedShortcutsMenus[secondLetterShortCutKey]) {
+                // the second letter is taken too, we dont do anything in this case.
+                return;
+            }
+            shortCutKey = secondLetterShortCutKey;
+        }
+        assignedShortcutsMenus[shortCutKey] = [{menuName, id}];
+        const menuShortcutCommandID = `AltMenu-${shortCutKey}`;
+        console.log(`Registering 'Alt-${shortCutKey}' menu shortcut handler..`);
+        CommandManager.register(`Menu Shortcut For ${shortCutKey}`, menuShortcutCommandID, function () {
+            const menusIdsForShortcut = assignedShortcutsMenus[shortCutKey].map(item => item.id);
+            if(altKeyReleased){
+                // this happens if the user started a new session of pressing alt-followed by key to open menu.
+                // we have to open the first menu item in this case.
+                altKeyReleased = false;
+                openMenu(menusIdsForShortcut[0]);
+                return true;
+            }
+            // if we are here, then another manu is already open as user is trying switch between two menus with same
+            // shortcut. Eg. Alt-F -file menu is open, switch to find menu.
+            let currentIndex = menusIdsForShortcut.indexOf(lastOpenedMenuID);
+            let menuToOpen;
+            // Check if the current menu is the last in the array or if it's not found (-1)
+            if (currentIndex === -1 || currentIndex === menusIdsForShortcut.length - 1) {
+                // If so, circle back to the first menu
+                menuToOpen = menusIdsForShortcut[0];
+            } else {
+                // Otherwise, go to the next menu
+                menuToOpen = menusIdsForShortcut[currentIndex + 1];
+            }
+            openMenu(menuToOpen);
+            return true;
+        });
+        KeyBindingManager.addBinding(menuShortcutCommandID, `Alt-${shortCutKey}`, null, {isMenuShortcut: true});
     }
 
     /**
@@ -1014,9 +1181,28 @@ define(function (require, exports, module) {
         menuMap[id] = menu;
 
 
-        let $toggle = $("<a href='#' class='dropdown-toggle' data-toggle='dropdown'>" + name + "</a>"),
+        let $toggle = $(`<a id="${getDropdownToggleMenuID(id)}" href='#' class='dropdown-toggle' data-toggle='dropdown'>${name}</a>`),
             $popUp = $("<ul class='dropdown-menu'></ul>"),
-            $newMenu = $("<li class='dropdown' id='" + id + "'></li>").append($toggle).append($popUp);
+            $dropdown = $("<li class='dropdown' id='" + id + "'></li>"),
+            $newMenu = $dropdown.append($toggle).append($popUp);
+
+        $toggle.on("mouseenter", function() {
+            _closeAllSubMenus();
+            const $this = $(this); // Cache the jQuery object of the current element
+
+            // Check if '#titlebar' or any of its descendants has focus
+            if ($('#titlebar, #titlebar *').is(':focus')) {
+                // If '#titlebar' or a descendant has focus, add 'selected' class and focus the current element
+                $this.addClass('selected').focus();
+            } else {
+                // Otherwise, just add 'selected' class
+                $this.addClass('selected');
+            }
+        });
+
+        $toggle.on("mouseleave", function() {
+            $(this).removeClass('selected');
+        });
 
         // Insert menu
         let $relativeElement = relativeID && $(_getHTMLMenu(relativeID));
@@ -1025,9 +1211,132 @@ define(function (require, exports, module) {
         // Install ESC key handling
         PopUpManager.addPopUp($popUp, closeAll, false);
 
-        // todo error handling
+        _addAltMenuShortcut(name, id);
 
         return menu;
+    }
+
+    function _switchMenus($menuDropdownToggle, event) {
+        // remove the class 'open' from its parent element
+        $menuDropdownToggle.parent().removeClass('open');
+        const menuID = $menuDropdownToggle.parent().get(0).id;
+        const mainMenu = menuMap[menuID];
+        const $dropdownToggles = $('#titlebar .dropdown-toggle');
+        let currentIndex = $dropdownToggles.index($menuDropdownToggle);
+        currentIndex = event.key === KEY.ARROW_LEFT ? currentIndex - 1 : currentIndex + 1;
+        let nextIndex = currentIndex;
+        if(nextIndex < 0){
+            nextIndex = 0;
+        } else if (nextIndex >= $dropdownToggles.length){
+            nextIndex = $dropdownToggles.length - 1;
+        }
+        const $nextDropdownToggle = $dropdownToggles.eq(nextIndex);
+        $nextDropdownToggle.parent().addClass('open');
+        $nextDropdownToggle.focus();
+        lastOpenedMenuID = $nextDropdownToggle.parent()[0].id;
+        mainMenu && mainMenu.closeSubMenu();
+    }
+
+    function _switchMenuItems($menuDropdownToggle, event) {
+        // change code such that if event.key is KEY.ARROW_UP or KEY.ARROW_DOWN, the selection will move formward or back
+        const menuID = $menuDropdownToggle.parent().get(0).id;
+        const $dropdownMenu = $menuDropdownToggle.parent().find(".dropdown-menu");
+        const $selected = $dropdownMenu.find('li a.selected');
+        const currentWidth = $dropdownMenu.width();
+        $dropdownMenu.css('min-width', currentWidth + 'px'); // This is to prevent size jumps when the keyboard
+        // icon hides and shows as selection changes
+        if ($selected.length === 0) {
+            // If no selected class exists, add it to the first <a> tag
+            $dropdownMenu.find('li a').first().addClass('selected');
+        } else {
+            // Remove the class from the current item
+            $selected.removeClass('selected');
+
+            // Determine the next or previous item based on the arrow key pressed
+            let $next;
+            if (event.key === KEY.ARROW_DOWN) {
+                let $nextLi = $selected.closest('li').next('li');
+                $next = $nextLi.find('a');
+                while (($next.length === 0 || $next.hasClass('disabled') || !$next.is(':visible')) && $nextLi.length) {
+                    $nextLi = $nextLi.next('li');
+                    $next = $nextLi.find('a');
+                }
+                if($next.length === 0){
+                    $next = $dropdownMenu.find('li a').first();
+                }
+            } else if (event.key === KEY.ARROW_UP) {
+                let $prevLi = $selected.closest('li').prev('li');
+                $next = $prevLi.find('a');
+                while (($next.length === 0 || $next.hasClass('disabled') || !$next.is(':visible')) && $prevLi.length) {
+                    $prevLi = $prevLi.prev('li');
+                    $next = $prevLi.find('a');
+                }
+                if ($next.length === 0) {
+                    $next = $dropdownMenu.find('li a').last();
+                }
+            }
+
+            // Add the 'selected' class to the next item
+            $next.addClass('selected');
+            const mainMenu = menuMap[menuID];
+            if($next.hasClass("sub-menu-item")){
+                const submenuID = $next.get(0).id;
+                const submenu = subMenuItemMap[submenuID];
+                if(submenu){
+                    mainMenu.closeSubMenu();
+                    mainMenu.openSubMenu = submenu;
+                    submenu.open();
+                }
+            } else {
+                mainMenu.closeSubMenu();
+            }
+        }
+    }
+    
+    function _execMenuItem($menuDropdownToggle, event) {
+        // change code such that if event.key is KEY.ARROW_UP or KEY.ARROW_DOWN, the selection will move formward or back
+        const $dropdownMenu = $menuDropdownToggle.parent().find(".dropdown-menu");
+        const $selected = $dropdownMenu.find('li a.selected');
+        if ($selected.length === 1 && $dropdownMenu.is(':visible')) {
+            // something is selected
+            MainViewManager.focusActivePane();
+            $selected.click();
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+        }
+    }
+
+    function menuKeyboardNavigationHandler(event) {
+        const allowedKeys = [KEY.ARROW_LEFT, KEY.ARROW_RIGHT, KEY.ARROW_UP, KEY.ARROW_DOWN,
+            KEY.ESCAPE, KEY.ENTER, KEY.RETURN];
+        if (!allowedKeys.includes(event.key)) {
+            return;
+        }
+        if ($('#titlebar, #titlebar *').is(':focus')) {
+            // If '#titlebar' or a descendant has focus, add 'selected' class and focus the current element
+            if(event.key === KEY.ESCAPE){
+                MainViewManager.focusActivePane();
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            const $focusedElement = $(':focus');
+            const isDescendantOfTitleBar = $focusedElement.closest('#titlebar').length > 0;
+            if(!isDescendantOfTitleBar){
+                return;
+            }
+            if($focusedElement.hasClass('dropdown-toggle')){
+                if(event.key === KEY.ARROW_LEFT || event.key === KEY.ARROW_RIGHT){
+                    // the main menu has focus, like file, edit etc..
+                    return _switchMenus($focusedElement, event);
+                } else if(event.key === KEY.ARROW_UP || event.key === KEY.ARROW_DOWN){
+                    return _switchMenuItems($focusedElement, event);
+                } else if(event.key === KEY.ENTER || event.key === KEY.RETURN || event.key === KEY.SPACE){
+                    return _execMenuItem($focusedElement, event);
+                }
+            }
+        }
     }
 
     /**
@@ -1304,6 +1613,15 @@ define(function (require, exports, module) {
         return cmenu;
     }
 
+    AppInit.htmlReady(function () {
+        $('#titlebar').on('focusin', function() {
+            KeyBindingManager.addGlobalKeydownHook(menuKeyboardNavigationHandler);
+        });
+        $('#titlebar').on('focusout', function() {
+            KeyBindingManager.removeGlobalKeydownHook(menuKeyboardNavigationHandler);
+        });
+    });
+
     // Deprecated menu ids
     DeprecationWarning.deprecateConstant(ContextMenuIds, "WORKING_SET_MENU", "WORKING_SET_CONTEXT_MENU");
     DeprecationWarning.deprecateConstant(ContextMenuIds, "WORKING_SET_SETTINGS_MENU", "WORKING_SET_CONFIG_MENU");
@@ -1325,6 +1643,8 @@ define(function (require, exports, module) {
     exports.getContextMenu = getContextMenu;
     exports.addMenu = addMenu;
     exports.removeMenu = removeMenu;
+    exports.openMenu = openMenu;
+    exports.getOpenMenu = getOpenMenu;
     exports.registerContextMenu = registerContextMenu;
     exports.closeAll = closeAll;
     exports.Menu = Menu;

@@ -25,6 +25,13 @@
 <html lang="en">
 <head id="main-scripts-head">
     <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: asset: https://asset.localhost localhost:* ws://localhost:* https://storage.googleapis.com https://platform.twitter.com https://buttons.github.io https://unpkg.com/@aicore/ https://www.googletagmanager.com;
+           img-src * data: localhost:* asset: https://asset.localhost ;
+           media-src * data: localhost:* asset: https://asset.localhost ;
+           font-src * data: localhost:* asset: https://asset.localhost ;
+           frame-src * localhost:* asset: https://asset.localhost ;
+           connect-src * localhost:* asset: https://asset.localhost ;">
     <meta name= "viewport" content="width=device-width, user-scalable=no" />
     <meta name="theme-color" content="#47484B">
     <link rel="apple-touch-icon" sizes="180x180" href="styles/images/favicons/apple-touch-icon.png">
@@ -32,11 +39,166 @@
     <link rel="icon" type="image/png" sizes="16x16" href="styles/images/favicons/favicon-16x16.png">
     <link rel="mask-icon" href="styles/images/favicons/safari-pinned-tab.svg" color="#da532c">
     <meta name="msapplication-TileColor" content="#47484B">
+    <link rel="manifest" href="manifest.json">
     <title>Phoenix Code</title>
-
+    <!--    boot-time styles only here-->
+    <style>
+        .forced-hidden {
+            display: none !important;
+        }
+    </style>
     <!-- start inline javascript and non module bootstrap scripts. you must add module scripts to the
      javascript module section only!!-->
+<!--    The app cache version is set by the pipeline version update script. Do not update manually.-->
+    <script>window.PHOENIX_APP_CACHE_VERSION="3.4.7";</script>
+<!--    The app cache version is set by the pipeline version update script. Do not update manually.-->
     <script>
+        if(["dev.phcode.dev", "staging.phcode.dev"].includes(location.hostname)
+            && localStorage.getItem("devDomainsEnabled") !== "true"){
+            alert("Hello explorer, you have reached a development version of phcode.dev that is not for general use and could be very unstable." +
+                `\n\nIf you know what you are doing and what to visit the dev site, please go to https://${location.hostname}/devEnable.html to enable dev site and visit again.` +
+                "\n\nYou will now be redirected to phcode.dev.");
+            window.location = "https://phcode.dev";
+        }
+        if(location.href.startsWith("tauri://") || location.href.startsWith('https://tauri.localhost')){
+            const errorMessage = `You should use custom protocol phtauri:// instead of tauri protocol ${location.href} .`;
+            alert(errorMessage);
+            console.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+        function _isTestWindow() {
+            const isTestPhoenixWindow = !!(new window.URLSearchParams(window.location.search || "")).get("testEnvironment");
+            const isSpecRunnerWindow = window.location.pathname.endsWith("/SpecRunner.html");
+            return isTestPhoenixWindow || isSpecRunnerWindow;
+        }
+        let canAccessTauri = false;
+        try {
+            // This is to allow phoenix live previews in phoenix desktop editor so that we can
+            // develop phoenix inside phoenix.
+            // This will throw an error if the live preview iframe and parent are cross-origin which is case in phcode
+            canAccessTauri = window.top.window.__TAURI__;
+            canAccessTauri = true;
+        } catch (e) {
+            // Cross-origin, exception caught, isSameOrigin remains false
+        }
+
+        // In Mac !! the window.__TAURI__ object is present in iframes, even if it doesnt works. so we are forced
+        // to use if(window.parent.window !== window) instead of if(!window.__TAURI__) here.
+        if(canAccessTauri && window.parent.window !== window && window.top.window.__TAURI__) {
+            // This is only intended to be used for in tests where phoenix is loaded inside iframes.
+            // this means that we are loaded in an iframe in the specrunner. Tauri doesnt expose tauri APIs
+            // in its iframes, so we directly use the top most windows tauri api object for tests to run properly.
+            console.warn("Phoenix is loaded in iframe, attempting to use tauri APIs from window.top.__TAURI__");
+            window.__TAURI__ = {
+                invoke: window.top.window.__TAURI__.invoke,
+                convertFileSrc: window.top.window.__TAURI__.convertFileSrc,
+                transformCallback: window.top.window.__TAURI__.transformCallback,
+                app: window.top.window.__TAURI__.app,
+                cli: window.top.window.__TAURI__.cli,
+                clipboard: window.top.window.__TAURI__.clipboard,
+                dialog: window.top.window.__TAURI__.dialog,
+                event: window.top.window.__TAURI__.event,
+                globalShortcut: window.top.window.__TAURI__.globalShortcut,
+                http: window.top.window.__TAURI__.http,
+                mocks: window.top.window.__TAURI__.mocks,
+                notification: window.top.window.__TAURI__.notification,
+                os: window.top.window.__TAURI__.os,
+                path: window.top.window.__TAURI__.path,
+                process: window.top.window.__TAURI__.process,
+                shell: window.top.window.__TAURI__.shell,
+                tauri: window.top.window.__TAURI__.tauri,
+                updater: window.top.window.__TAURI__.updater,
+                window: window.top.window.__TAURI__.window,
+                fs: {} // this needs some special handling and will be assigned below.
+            };
+            // fs special handling start :patch the fs.readBinaryFile and fs.WriteBinaryFile apis to use this windows uint8arrays
+            for (let key in window.top.window.__TAURI__.fs) {
+                window.__TAURI__.fs[key] = window.top.window.__TAURI__.fs[key];
+            }
+
+            const readBinaryFile = window.__TAURI__.fs.readBinaryFile;
+            const writeBinaryFile = window.__TAURI__.fs.writeBinaryFile;
+            window.__TAURI__.fs.readBinaryFile = function (...args) {
+                return new Promise((resolve, reject)=>{
+                    readBinaryFile(...args)
+                        .then(contents=>{
+                            // contents is Uint8Array of parent window instance type. we have to convert it to
+                            // this windows uintarray type
+                            resolve(new Uint8Array(contents))
+                        })
+                        .catch(reject)
+                });
+            }
+            window.__TAURI__.fs.writeBinaryFile = function (platformPath, arrayBuffer, options) {
+                let uint8ArrayOfTop = new window.top.Uint8Array(arrayBuffer); // this will only pass the reference
+                uint8ArrayOfTop = new window.top.Uint8Array(uint8ArrayOfTop); // this will perform a deep copy bitwise
+                return new Promise((resolve, reject)=>{
+                    writeBinaryFile(platformPath, uint8ArrayOfTop.buffer, options)
+                        .then(resolve)
+                        .catch(reject)
+                });
+            }
+            // fs special handling end
+        }
+        if(window.__TAURI__) {
+            function setupTauriBootVars() {
+                // this is used by storage.js (window.PhStore) to restore our persistent storage layer in tauri.
+                window._tauriStorageRestorePromise = window.__TAURI__.fs.readTextFile(
+                    "storageDB/storageDBDump.json", { dir: window.__TAURI__.fs.BaseDirectory.AppLocalData })
+                    .catch(err =>{
+                        console.error("First boot detected or Failed to init storage from cache." +
+                            " If first boot, ignore this error", err);
+                    });
+                // increase this version number if you are modifying any boot vars
+                const TAURI_BOOT_VARS_LOCALSTORAGE_KEY = "tauriBootVarsV1";
+                const tauriBootVarsStr = localStorage.getItem(TAURI_BOOT_VARS_LOCALSTORAGE_KEY);
+                if(tauriBootVarsStr) {
+                    try{
+                        window._tauriBootVars = JSON.parse(tauriBootVarsStr);
+                        window._tauriBootVarsPromise = Promise.resolve("Resolved from localstorage.");
+                    } catch (e) {
+                        console.error("Error getting tauri boot vars from localstorage. Falling back to make tauri bootstrap calls.", e);
+                    }
+                }
+                const appNamePromise = window.__TAURI__.app.getName();
+                // for running tests, the user document dir is set to app data dir as we dont want to
+                // corrupt user documents dir for tests
+                let documentDirPromise;
+                if(_isTestWindow()){
+                    documentDirPromise = window.__TAURI__.path.appLocalDataDir(); // appdata/testDocuments will be appended below
+                } else {
+                    documentDirPromise = window.__TAURI__.path.documentDir();
+                }
+
+                const appLocalDirPromise =  window.__TAURI__.path.appLocalDataDir();
+                const tempDirPromise = window.__TAURI__.os.tempdir();
+                window._tauriBootVars = {};
+                const tauriBootStartTime = Date.now();
+                window._tauriBootVarsPromise = Promise.all([appNamePromise, documentDirPromise,
+                    appLocalDirPromise, tempDirPromise])
+                    .then((results) => {
+                        window._tauriBootVars.appname = results[0];
+
+                        window._tauriBootVars.documentDir = results[1];
+                        // For tests, documents dir is localAppDataDir/testDocuments to keep user documents garbage free for tests
+                        // Also In github actions, the tauri get doc dir call gets stuck indefinitely
+                        if(_isTestWindow()){
+                            if(!window._tauriBootVars.documentDir.endsWith(window.__TAURI__.path.sep)){
+                                window._tauriBootVars.documentDir = window._tauriBootVars.documentDir + window.__TAURI__.path.sep;
+                            }
+                            window._tauriBootVars.documentDir = `${window._tauriBootVars.documentDir}testDocuments${window.__TAURI__.path.sep}`;
+                        }
+                        //Documents dir special case for tests
+
+                        window._tauriBootVars.appLocalDir = results[2];
+                        window._tauriBootVars.tempDir = results[3];
+                        window._tauriBootVars.bootstrapTime = Date.now() - tauriBootStartTime;
+                        localStorage.setItem(TAURI_BOOT_VARS_LOCALSTORAGE_KEY, JSON.stringify(window._tauriBootVars));
+                    });
+            }
+            setupTauriBootVars();
+        }
+
         // environment setup for boot. do not move out of index html!!
         (function(){
             function _mobileCheck() {
@@ -57,6 +219,19 @@
                   || (function (p) {
                       return p.toString() === "[object SafariRemoteNotification]";
                   })(!window['safari'] || (typeof safari !== 'undefined' && window['safari'].pushNotification));
+            }
+            function detectEngine() {
+                const userAgent = navigator.userAgent;
+
+                if (/WebKit/.test(userAgent)) {
+                    if (/Chrome|Blink|Edg\//.test(userAgent)) {
+                        return 'Blink';  // Chrome or Edge (based on Blink)
+                    } else {
+                        return 'WebKit'; // Likely Safari or other true WebKit-based browser
+                    }
+                }
+
+                return 'Other';
             }
             function getBrowserDetails() {
                 let isChrome = navigator.userAgent.indexOf("Chrome") !== -1;
@@ -85,7 +260,9 @@
                         isChrome: isChromeBrowser,
                         isEdgeChromium: isEdgeChromiumBrowser,
                         isOperaChromium: isOperaChromiumBrowser,
-                        isSafari: isSafari()
+                        isSafari: isSafari(),
+                        isWebKit: detectEngine() === 'WebKit',
+                        isBlink: detectEngine() === 'Blink'
                     }
                 };
             }
@@ -100,153 +277,112 @@
                 }
                 return base;
             }
-            function _isTestWindow() {
-                const isTestPhoenixWindow = !!(new window.URLSearchParams(window.location.search || "")).get("testEnvironment");
-                const isSpecRunnerWindow = window.location.pathname.endsWith("/SpecRunner.html");
-                return isTestPhoenixWindow || isSpecRunnerWindow;
-            }
+
             // Determine OS/platform
+            window._getPlatformOverride = function (){
+                const currentUrl = window.location.href;
+                const searchParams = new URLSearchParams(new URL(currentUrl).search);
+                const platform = searchParams.get('platform');
+                const allowedOverRides = ['win', 'mac', 'linux'];
+                if(allowedOverRides.includes(platform)){
+                    return platform;
+                }
+                return null;
+            }
             let platform = "win";
-            if (navigator.platform && navigator.platform.match("Mac")) {
+            if(_getPlatformOverride() && _isTestWindow()){
+                platform = _getPlatformOverride();
+                console.warn("using platform override: ", platform, "This is only expected to run in tests.");
+            } else if (navigator.platform && navigator.platform.match("Mac")) {
                 platform = "mac";
             } else if (navigator.platform && navigator.platform.indexOf("Linux") >= 0) {
                 platform = "linux";
             }
             window.Phoenix = {
+                PHOENIX_INSTANCE_ID: "PH-" + Math.round( Math.random()*1000000000000),
                 browser: getBrowserDetails(),
                 platform,
                 baseURL: _getBaseURL(),
                 isTestWindow: _isTestWindow(),
                 firstBoot: false, // will be set below
-                startTime: Date.now()
+                startTime: Date.now(),
+                TRUSTED_ORIGINS: {
+                    // if modifying this list, make sure to update in https://github.com/phcode-dev/phcode.live/blob/main/docs/trustedOrigins.js
+                    // extensions may add their trusted origin to this list at any time.
+                    'http://localhost:8000': true, // phcode dev server
+                    'http://localhost:8001': true, // phcode dev live preview server
+                    'http://localhost:5000': true, // playwright tests
+                    'http://127.0.0.1:8000': true, // phcode dev server
+                    'http://127.0.0.1:8001': true, // phcode dev live preview server
+                    'http://127.0.0.1:5000': true, // playwright tests
+                    'phtauri://localhost': true, // tauri prod app
+                    'https://phtauri.localhost': true, // tauri
+                    'https://phcode.live': true, // phcode prod live preview server
+                    'https://phcode.dev': true,
+                    'https://dev.phcode.dev': true,
+                    'https://staging.phcode.dev': true,
+                    'https://create.phcode.dev': true
+                }
             };
-            Phoenix.isSupportedBrowser = Phoenix.browser.isDeskTop && ("serviceWorker" in navigator);
+            window.Phoenix.TRUSTED_ORIGINS[location.origin] = true;
+            Phoenix.isSupportedBrowser = Phoenix.browser.isTauri ||
+                (Phoenix.browser.isDeskTop && ("serviceWorker" in navigator));
             window.testEnvironment = window.Phoenix.isTestWindow;
+
+            // now setup PhoenixBaseURL, which if of the form https://phcode.dev/ or tauri://localhost/
+            const url = new URL(window.location.href);
+            url.search = ''; // remove all query string params.
+            let baseUrl = url.href;
+            if(baseUrl.endsWith(".html")){
+                // http://a.b/index.html -> // http://a.b
+                baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/"));
+            }
+            if(!baseUrl.endsWith("/")){
+                baseUrl = baseUrl + "/";
+            }
+            window.PhoenixBaseURL = baseUrl;
         }());
     </script>
-    <script>
-        if(["dev.phcode.dev", "staging.phcode.dev"].includes(location.hostname)
-            && localStorage.getItem("devDomainsEnabled") !== "true"){
-            alert("Hello explorer, you have reached a development version of phcode.dev that is not for general use and could be very unstable." +
-                `\n\nIf you know what you are doing and what to visit the dev site, please go to https://${location.hostname}/devEnable.html to enable dev site and visit again.` +
-                "\n\nYou will now be redirected to phcode.dev.");
-            window.location = "https://phcode.dev";
-        }
-        /*Bootstrap cache check. since index.html is always loaded network first, the cache reset code will always
-        be guaranteed to be hit on app update.
-        Note that this cannot be moved to a separate file and should be in index.html due to above reason.
-        This is a nuke cache option. Though mostly safe, Use it wisely to prevent slow startup when resetting.
-        */
-        const urlParams = new URLSearchParams(window.location.search || "");
-        const LESS_REFRESH_SCHEDULED_KEY = "lessRefreshScheduled";
-        const shouldRefreshLess = window.localStorage.getItem(LESS_REFRESH_SCHEDULED_KEY) === 'yes';
-        const CACHE_NAME_EVERYTHING = "everything";
-        function _resetCacheIfNeeded() {
-            const cacheKey = "browserCacheVersionKey";
-            const newCacheVersion = "V15"; // just increment this number to V2, v3 etc. to force clear the cached content.
-            const lastClearedVersion = window.localStorage.getItem(cacheKey);
-            if(lastClearedVersion === null){
-                // setup First load flag, no cache, return.
-                window.Phoenix.firstBoot = true;
-                localStorage.setItem(cacheKey, newCacheVersion);
-                return;
-            }
-            if(!window.caches){
-                console.error("CacheStorage Reset: API not supported by browser.");
-            }
-            if(lastClearedVersion !== newCacheVersion) {
-                window.cacheRefreshInProgress = true;
-                let openedCache;
-                console.log("CacheStorage Reset: Reset cache in progress..");
-                caches.open(CACHE_NAME_EVERYTHING)
-                    .then(cache => {
-                        openedCache = cache;
-                        return cache.keys();
-                    })
-                    .then(keys => {
-                        let promises = []
-                        for(let key of keys){
-                            promises.push(openedCache.delete(key));
-                        }
-                        console.log(`CacheStorage Reset: Deleting ${promises.length} cache entries from ${CACHE_NAME_EVERYTHING}`);
-                        return Promise.all(promises);
-                    }).then(() => {
-                        console.log("CacheStorage Reset: Cache successfully reset");
-                        let totalWaitTime = 0, waitTime = 100, maxWaitTime = 3000;
-                        let intervalTimer = setInterval(()=>{
-                            // wait for less to get loaded. less caches css in local storage in production urls
-                            // and might not load new css classes if we don't reset. less doesn't cache in localhost.
-                            totalWaitTime += waitTime;
-                            if(window.less && less.refresh){
-                                localStorage.setItem(cacheKey, newCacheVersion);
-                                localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "yes");
-                                less.refresh(true).finally(()=>{
-                                    localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "no");
-                                    location.reload();
-                                });
-                                clearInterval(intervalTimer);
-                            } else if(totalWaitTime > maxWaitTime){
-                                // ignore less refresh, the app load itself is critical. less refresh we will try later
-                                localStorage.setItem(cacheKey, newCacheVersion);
-                                localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "yes");
-                                location.reload();
-                            }
-                        }, waitTime);
-                    }).catch( e => {
-                        console.error("Error while resetting cache", e);
-                        window.cacheClearError = e;
-                        window.cacheRefreshInProgress = false;
-                        // try our luck loading phoenix as cache reset failed
-                        if(window._loadPhoenixAfterSplashScreen) {
-                            window._loadPhoenixAfterSplashScreen();
-                        }
-                        // throw again so that bugsnag can report if initialised. else bugsnag
-                        // will report the error when it comes online via window.cacheClearError
-                        throw e;
-                    });
-            }
-            if(shouldRefreshLess){
-                let lessRefreshInterval = setInterval(()=>{
-                    // wait for less to get loaded. less caches css in local storage in production urls
-                    // and might not load new css classes if we don't reset. less doesn't cache in localhost.
-                    if(window.less && less.refresh){
-                        less.refresh(true).finally(()=>{
-                            localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "no");
-                        });
-                        clearInterval(lessRefreshInterval);
-                    }
-                }, 500);
-            }
-        }
-        _resetCacheIfNeeded();
-    </script>
+    <script src="phoenix/virtualfs.js"></script>
 
     <!-- load bugsnag error reporter as soon as cache handling code is done-->
     <script src="thirdparty/bugsnag.min.js"></script>
     <script src="appConfig.js"></script>
+    <script type="module">
+        import BugsnagPerformance from "./thirdparty/bugsnag-performance.min.js";
+        BugsnagPerformance.start({
+            apiKey: '94ef94f4daf871ca0f2fc912c6d4764d',
+            appVersion: AppConfig.version,
+            releaseStage: window.__TAURI__ ? `tauri-${AppConfig.config.bugsnagEnv}-${Phoenix.platform}` : AppConfig.config.bugsnagEnv,
+            autoInstrumentRouteChanges: false,
+            autoInstrumentNetworkRequests: false,
+            autoInstrumentFullPageLoads: false
+        });
+        window.BugsnagPerformance = BugsnagPerformance;
+    </script>
     <script src="loggerSetup.js"></script>
+    <script src="utils/EventDispatcher.js"></script>
 
     <script>
         window.splashScreenPresent = true;
 
-        function _removeSplashScreenIfNeeded() {
-            if(window.testEnvironment || window.__TAURI__){
-                // tauri means local builds and, it loads up pretty fast, so splash screen
-                document.getElementById('phoenix-loading-splash-screen-overlay').remove();
-                window.splashScreenPresent = false;
-            }
+        /*Bootstrap cache check. since index.html is always loaded network first, the cache reset code will always
+        be guaranteed to be hit on app update.
+        Note that this cannot be moved to a separate file and should be in index.html due to above reason.
+        There is a nuke cache option. Though mostly safe, Use it wisely to prevent slow startup when resetting.
+        */
+        window._CURRENT_CACHE_VERSION_KEY = "currentWebCacheVersion";
+        if(!localStorage.getItem(window._CURRENT_CACHE_VERSION_KEY)){
+            // first boot, no cache
+            localStorage.setItem(window._CURRENT_CACHE_VERSION_KEY, PHOENIX_APP_CACHE_VERSION);
         }
 
-        // this function is called onload so it is safe to be deferred loaded inline script as it is guarented to only
-        // get executed after all deferred scripts has been loaded
-        function _loadPhoenixAfterSplashScreen() {
-            _removeSplashScreenIfNeeded();
-            if(window.cacheRefreshInProgress){
-                // We should not load anything while the cache is inconsistent.
-                // A page reload will be scheduled on successful clear.
+        function _loadPhoenixMain() {
+            if(window._phoenixMainLoaded){
                 return;
             }
-            var loadJS = function(url, implementationCode, location, dataMainValue){
+            window._phoenixMainLoaded = true;
+            const loadJS = function(url, implementationCode, location, dataMainValue){
                 //url is URL of external file, implementationCode is the code
                 //to be called from the file, location is the location to
                 //insert the <script> element
@@ -264,15 +400,245 @@
             function _requireDone() {
                 loadJS('verify-dependencies-loaded.js', null, document.body);
             }
-            loadJS('thirdparty/requirejs/require.js', _requireDone, document.body, "main");
-        }
-    </script>
 
-    <script type="text/javascript">
-        // Mixpanel analytics
-        (function(f,b){if(!b.__SV){var e,g,i,h;window.mixpanel=b;b._i=[];b.init=function(e,f,c){function g(a,d){var b=d.split(".");2==b.length&&(a=a[b[0]],d=b[1]);a[d]=function(){a.push([d].concat(Array.prototype.slice.call(arguments,0)))}}var a=b;"undefined"!==typeof c?a=b[c]=[]:c="mixpanel";a.people=a.people||[];a.toString=function(a){var d="mixpanel";"mixpanel"!==c&&(d+="."+c);a||(d+=" (stub)");return d};a.people.toString=function(){return a.toString(1)+".people (stub)"};i="disable time_event track track_pageview track_links track_forms track_with_groups add_group set_group remove_group register register_once alias unregister identify name_tag set_config reset opt_in_tracking opt_out_tracking has_opted_in_tracking has_opted_out_tracking clear_opt_in_out_tracking start_batch_senders people.set people.set_once people.unset people.increment people.append people.union people.track_charge people.clear_charges people.delete_user people.remove".split(" ");
-            for(h=0;h<i.length;h++)g(a,i[h]);var j="set set_once union unset remove delete".split(" ");a.get_group=function(){function b(c){d[c]=function(){call2_args=arguments;call2=[c].concat(Array.prototype.slice.call(call2_args,0));a.push([e,call2])}}for(var d={},e=["get_group"].concat(Array.prototype.slice.call(arguments,0)),c=0;c<j.length;c++)b(j[c]);return d};b._i.push([e,f,c])};b.__SV=1.2;e=f.createElement("script");e.type="text/javascript";e.async=!0;e.src="undefined"!==typeof MIXPANEL_CUSTOM_LIB_URL?
-            MIXPANEL_CUSTOM_LIB_URL:"file:"===f.location.protocol&&"//cdn.mxpnl.com/libs/mixpanel-2-latest.min.js".match(/^\/\//)?"https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js":"//cdn.mxpnl.com/libs/mixpanel-2-latest.min.js";g=f.getElementsByTagName("script")[0];g.parentNode.insertBefore(e,g)}})(document,window.mixpanel||[]);
+            function _startRequireLoop() {
+                loadJS('thirdparty/requirejs/require.js', _requireDone, document.body, "main");
+            }
+            if(window.PhStore){
+                window.PhStore.storageReadyPromise.finally(_startRequireLoop);
+            } else {
+                const interval = setInterval(()=>{
+                    if(window.PhStore){
+                        clearInterval(interval);
+                        PhStore.storageReadyPromise.finally(_startRequireLoop);
+                    }
+                }, 50);
+            }
+        }
+
+        async function _resetCacheIfNeeded(force) {
+            if(Phoenix.browser.isTauri || Phoenix.isTestWindow) {
+                // no web cache in desktop builds ot test windows
+                return;
+            }
+            if(!window.caches){
+                console.error("CacheStorage: API not supported by browser.");
+            }
+
+            function _showUpdateMessage(message) {
+                let splashScreenFrame = document.getElementById("splash-screen-frame");
+                if(splashScreenFrame){
+                    let displayText2 = splashScreenFrame.contentDocument.getElementById("load-status-display-text");
+                    displayText2 && (displayText2.textContent = message);
+                }
+            }
+
+            async function computeSHA256(response) {
+                try {
+                    if (!response.ok) {
+                        return null;
+                    }
+                    const data = await response.arrayBuffer();
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                    // Convert the ArrayBuffer to hex string
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                } catch (error) {
+                    console.error("cache-upgrade: error computing hash:", error);
+                    return null;
+                }
+            }
+
+            async function migrate(oldCache, newCache, newCacheManifest) {
+                try{
+                    const newCacheOpen = await caches.open(newCache);
+                    const oldCacheOpen = await caches.open(oldCache);
+                    const oldCacheKeys = await oldCacheOpen.keys();
+                    let count = 0, totalCount = 0;
+                    for(let request of oldCacheKeys){
+                        totalCount++;
+                        let newResponseCached = await newCacheOpen.match(request);
+                        let relativePath = (new URL(request.url)).pathname.slice(1);
+                        const newSHA = newCacheManifest[relativePath];
+                        if(!newResponseCached && newSHA) {
+                            const oldResponse = await oldCacheOpen.match(request);
+                            const oldResponseClone = oldResponse.clone();
+                            if(!oldResponse){
+                                continue;
+                            }
+                            _showUpdateMessage(`${count} of ${totalCount} files unchanged...`);
+                            const oldSHA = await computeSHA256(oldResponse);
+                            if(newSHA === oldSHA) {
+                                count++;
+                                await newCacheOpen.put(request, oldResponseClone);
+                            }
+                        }
+                    }
+                    console.log("cache-upgrade: reused entries from old cache: ", count, "of", totalCount);
+                    await caches.delete(oldCache);
+                } catch (e) {
+                    console.error("cache-upgrade: Error while migrating cache", e);
+                }
+            }
+
+            async function updateCache(newCacheName, oldCacheName, defaultCacheName) {
+                try{
+                    let newCacheManifest = await fetch(`web-cache/${newCacheName}/cacheManifest.json`);
+                    if(!newCacheManifest.ok){
+                        return false;
+                    }
+                    newCacheManifest = await newCacheManifest.json();
+                    _showUpdateMessage("Migrating default caches...");
+                    if(await caches.has(defaultCacheName)){
+                        await migrate(defaultCacheName, newCacheName, newCacheManifest);
+                    }
+                    _showUpdateMessage("Migrating last version caches...");
+                    if(oldCacheName && await caches.has(oldCacheName)){
+                        await migrate(oldCacheName, newCacheName, newCacheManifest);
+                    }
+                    return true;
+                } catch (e) {
+                    console.error("Error updating cache: ", e);
+                }
+                return false;
+            }
+
+            const LESS_REFRESH_SCHEDULED_KEY = "lessRefreshScheduled";
+
+            function _readFileSafe(readPath) {
+                return new Promise(resolve =>{
+                    fs.readFile(readPath, "utf8", (err, text)=>{
+                        if(err){
+                            console.error("Could not read", readPath)
+                            resolve(null);
+                            return;
+                        }
+                        resolve(text);
+                    });
+                });
+            }
+
+            function _writeFileSafe(writePath, text) {
+                return new Promise(resolve =>{
+                    fs.writeFile(writePath, text, "utf8", (err)=>{
+                        if(err){
+                            console.error("Could not written", writePath)
+                        }
+                        resolve(err);
+                    });
+                });
+            }
+
+            const WEB_CACHE_FILE_PATH = "/webCacheVersion.txt";
+            const CACHE_NAME_EVERYTHING = "everythingV2"; // this is used in service worker
+            /**
+             * Clears legacy caches from the browser storage. This function is intended to be used
+             * when migrating to a new cache management strategy. Safe to be deleted after sep-2024
+             * @return {Promise<void>}
+             */
+            async function clearLegacyCache() {
+                // as we switched to new versioned cache management, we will be clearing all the legacy cache.
+                const legacyCacheName = "browserCacheVersionKey";
+                const lastClearedVersion = window.localStorage.getItem(legacyCacheName);
+                if(lastClearedVersion){
+                    // legacy cache detected
+                    console.log("Legacy cache detected, resetting...");
+                    localStorage.removeItem(legacyCacheName);
+                    await window.caches.delete(legacyCacheName);
+                    localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "yes");
+                    if(window.fs){
+                        await _writeFileSafe(WEB_CACHE_FILE_PATH, PHOENIX_APP_CACHE_VERSION);
+                        location.reload();
+                    } else {
+                        location.reload();
+                    }
+                }
+            }
+            await clearLegacyCache();
+
+            const shouldRefreshLess = window.localStorage.getItem(LESS_REFRESH_SCHEDULED_KEY) === 'yes';
+            if(shouldRefreshLess){
+                let lessRefreshInterval = setInterval(()=>{
+                    // wait for less to get loaded. less caches css in local storage in production urls
+                    // and might not load new css classes if we don't reset. less doesn't cache in localhost.
+                    if(window.less && less.refresh){
+                        less.refresh(true).finally(()=>{
+                            localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "no");
+                        });
+                        clearInterval(lessRefreshInterval);
+                    }
+                }, 500);
+            }
+
+            const currentCacheName = await _readFileSafe(WEB_CACHE_FILE_PATH);
+            if(force){
+                // We have to delete and clear cache if force option is given
+                await window.caches.delete(CACHE_NAME_EVERYTHING);
+                currentCacheName && await window.caches.delete(currentCacheName);
+            }
+            if(!currentCacheName) {
+                // fresh install, no cache
+                console.log("No cache detected, ignore if first boot or safari ITP.");
+                localStorage.setItem(window._CURRENT_CACHE_VERSION_KEY, PHOENIX_APP_CACHE_VERSION);
+                await _writeFileSafe(WEB_CACHE_FILE_PATH, PHOENIX_APP_CACHE_VERSION);
+                // on next reload, the new cache will be active and populated by service worker
+            } else if(currentCacheName && (currentCacheName !== PHOENIX_APP_CACHE_VERSION || force)) {
+                // This is an upgrade we could in the future use the cacheManifest.json to increase update speed
+                // by only selectively updating the changed files.
+                console.warn("Old version cache detected", currentCacheName, "updating to", PHOENIX_APP_CACHE_VERSION);
+                const cacheUpdated = await updateCache(PHOENIX_APP_CACHE_VERSION, currentCacheName, CACHE_NAME_EVERYTHING);
+                if(cacheUpdated){
+                    await _writeFileSafe(WEB_CACHE_FILE_PATH, PHOENIX_APP_CACHE_VERSION);
+                    localStorage.setItem(window._CURRENT_CACHE_VERSION_KEY, PHOENIX_APP_CACHE_VERSION);
+                    localStorage.setItem(LESS_REFRESH_SCHEDULED_KEY, "yes");
+                    if(!force){
+                        location.reload();
+                        // force reload handlers should reload themselves.
+                    }
+                } else if(location.href.endsWith("/src/") || location.href.endsWith("/dist/") || location.href.endsWith("index.html")){
+                    // load phoenix if its any of the non-cached urls.
+                    _loadPhoenixMain();
+                }
+            }
+        }
+        _resetCacheIfNeeded();
+
+        function _addOrRemoveSplashScreenIfNeeded() {
+            if(!window.__TAURI__) {
+                document.getElementById('phoenix-loading-splash-screen-overlay').classList.remove('forced-hidden')
+            }
+            if(window.testEnvironment || window.__TAURI__){
+                // tauri means local builds and, it loads up pretty fast, so splash screen
+                document.getElementById('phoenix-loading-splash-screen-overlay').remove();
+                window.splashScreenPresent = false;
+            }
+        }
+
+        // this function is called onload so it is safe to be deferred loaded inline script as it is guarented to only
+        // get executed after all deferred scripts has been loaded
+        function _loadPhoenixAfterSplashScreen() {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                // Dark mode is enabled
+                document.body.classList.add('dark'); // This will later be overridden by the theme manager as required.
+            }
+            _addOrRemoveSplashScreenIfNeeded();
+            if(!Phoenix.browser.isTauri) {
+                const currentCacheVersion = localStorage.getItem(window._CURRENT_CACHE_VERSION_KEY);
+                if(currentCacheVersion !== PHOENIX_APP_CACHE_VERSION){
+                    // dont load phoenix as the cache is inconsistent, the updater will reload after fixing cache
+                    let splashScreenFrame = document.getElementById("splash-screen-frame");
+                    if(!splashScreenFrame){
+                        return;
+                    }
+                    let displayBtn1 = splashScreenFrame.contentDocument.getElementById("load-status-display-btn");
+                    let displayText2 = splashScreenFrame.contentDocument.getElementById("load-status-display-text");
+                    displayBtn1 && (displayBtn1.textContent = "Updating app...");
+                    displayText2 && (displayText2.textContent = "Please wait....");
+                    return;
+                }
+            }
+            _loadPhoenixMain();
+        }
     </script>
 
     <!-- start inline javascript and non module bootstrap scripts-->
@@ -286,17 +652,19 @@
     https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script#attr-defer
     -->
     <!-- Import the phoenix browser virtual file system -->
-    <script src="phoenix/virtualfs.js" defer></script>
     <script src="phoenix/shell.js" type="module" defer></script>
     <script src="phoenix/virtual-server-loader.js" type="module" defer></script>
+<!--    node loader should come only after fs libs are loaded as we init fs libs with node fs urls-->
+    <script src="node-loader.js" defer></script>
+    <script src="storage.js" type="module"></script>
     <!-- end javascript module scripts-->
 
     <!-- CSS/LESS -->
 
     <link rel="stylesheet" type="text/css" href="thirdparty/fontawesome/css/all.min.css">
     <link rel="stylesheet" type="text/css" href="thirdparty/devicon/devicon.min.css">
-    <link rel="stylesheet" type="text/css" href="thirdparty/CodeMirror/lib/codemirror.css">
-    <link rel="stylesheet/less" type="text/css" href="styles/brackets.less">
+    <link rel="stylesheet" type="text/css" href="thirdparty/file-icons/ffont.css">
+    <link rel="stylesheet/less" type="text/css" href="styles/brackets.less"> <!--will be replaced in prod/staging with brackets-all.css by release:staging and prod command-->
 
     <!-- Pre-load third party scripts that cannot be async loaded. Defer loading of all below scripts
      caused increase in boot time with cache as observed from analytics. so we don't defer third party deps-->
@@ -333,13 +701,175 @@
         }
     </style>
 
+    <script type="text/javascript">
+        function _chromeOSPWAHandle() {
+            let deferredPrompt;
+            const PWA_PROMPTED_BEFORE_KEY = "PWA_PROMPTED_BEFORE";
+            function isChromeOS() {
+                return /CrOS/.test(navigator.userAgent);
+            }
+            function showPWAInstallIcon() {
+                if(!window.$ || !window.Strings){
+                    setTimeout(showPWAInstallIcon, 5000);
+                    return;
+                }
+                let $updateIcon = window.$("#update-notification");
+                $updateIcon.removeClass("forced-hidden");
+                $updateIcon.attr("title", Strings.INSTALL_WEBAPP);
+                $updateIcon.click(()=>{
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choiceResult) => {
+                        if (choiceResult.outcome === 'accepted') {
+                            deferredPrompt = null;
+                            $updateIcon.addClass("forced-hidden");
+                        } else {
+                            console.log('User dismissed the A2HS prompt');
+                        }
+                    });
+                });
+                if(!localStorage.getItem(PWA_PROMPTED_BEFORE_KEY)){
+                    localStorage.setItem(PWA_PROMPTED_BEFORE_KEY, "yes");
+                    deferredPrompt.prompt();
+                }
+            }
+            window.addEventListener("beforeinstallprompt", (event) => {
+                event.preventDefault(); // no install prompts in any other browser.
+                if(!isChromeOS()){
+                    return;
+                }
+                deferredPrompt = event;
+                showPWAInstallIcon();
+            });
+        }
+        _chromeOSPWAHandle();
+    </script>
+
 </head>
 <body id="Phoenix-Main" onload="_loadPhoenixAfterSplashScreen()">
-<div id="phoenix-loading-splash-screen-overlay">
+<div id="phoenix-loading-splash-screen-overlay" class="forced-hidden" onload="_addOrRemoveSplashScreenIfNeeded()">
     <iframe id="splash-screen-frame" style="width: 100%; height: 100%;border: none" seamless="true"
             title="Phoenix Splash Screen" src="assets/phoenix-splash/index.html"></iframe>
 </div>
 
+<div class="main-view">
+    <div id="notificationUIDefaultAnchor" href="#">
+    </div>
+    <div id="sidebar" class="sidebar panel quiet-scrollbars horz-resizable right-resizer collapsible" data-minsize="0" data-maxsize="80%" data-forceleft=".content">
+        <div id="mainNavBar">
+            <div id="mainNavBarLeft">
+                <div id="newProject" class="new-project-btn btn-alt-quiet"></div>
+            </div>
+            <div id="mainNavBarRight">
+                <div id="navBackButton" class="nav-back-btn btn-alt-quiet"></div>
+                <div id="navForwardButton" class="nav-forward-btn btn-alt-quiet"></div>
+                <div id="showInfileTree" class="show-in-file-tree-btn btn-alt-quiet"></div>
+                <div id="searchNav" class="search-nav-btn btn-alt-quiet"></div>
+                <div class="working-set-splitview-btn btn-alt-quiet"></div>
+            </div>
+        </div>
+
+        <div id="working-set-list-container">
+
+        </div>
+        <div id="project-files-header">
+            <i id="project-operations-spinner" class="fa fa-spinner fa-spin forced-hidden"></i>
+            <span id="project-title" class="title"></span>
+        </div>
+        <div id="project-files-container">
+            <!-- This will contain a dynamically generated <ul> hierarchy at runtime -->
+        </div>
+    </div>
+
+    <!--
+        Vertical stack of titlebar (in-browser), editor, bottom panels, status bar
+            (status bar is injected later - see StatusBar.init()).
+        Note: all children must be in a vertical stack with heights explicitly set in a fixed
+            unit such as px (not percent/em/auto). If you change the height later, you must
+            call WorkspaceManager.recomputeLayout() each time. Otherwise the layout will
+            not get set correctly. Use WorkspaceManager to have this managed for you automatically.
+     -->
+    <div class="content">
+        <!-- Horizontal titlebar containing menus & filename when inBrowser -->
+        <div id="titlebar" class="toolbar no-focus">
+            <!-- Menu bar -->
+            <ul class="nav" data-dropdown="dropdown">
+            </ul>
+
+            <!-- Filename label -->
+            <div class="title-wrapper">
+                <span class="title"></span>&nbsp;<span class='dirty-dot' style="visibility:hidden;">•</span>
+            </div>
+        </div>
+
+        <div id="editor-holder">
+        <!-- View Panes are programatically created here -->
+        </div>
+        <div id="status-bar" class="statusbar no-focus">
+            <div id="status-info" class="info" >
+                <div id="status-cursor"></div>
+                <div id="status-file"></div>
+            </div>
+            <div id="status-indicators" class="indicators">
+                <div id="status-indent">
+                    <div id="indent-type"></div>
+                    <div id="indent-width-label"></div>
+                    <input id="indent-width-input" type="number" min="1" max="10" maxlength="2" size="2" class="hidden">
+                </div>
+                <div id="status-language"></div>
+                <div id="status-encoding"></div>
+                <div id="status-overwrite"></div>
+                <div id="status-tasks" class="forced-hidden global-indicator">
+                    <div class="spinner spin"></div>
+                </div>
+            </div>
+        </div>
+    <!-- Bottom panels and status bar are programmatically created here -->
+
+    </div>
+
+<!-- Vertical toolbar docked to right -->
+<div id="main-toolbar" class="toolbar no-focus collapsible">
+    <!-- Top-aligned buttons -->
+    <div id="main-plugin-panel" class="plugin-panel">
+    </div>
+    <div id="plugin-icons-bar">
+        <div class="buttons">
+            <a id="toolbar-go-live" href="#"></a> <!-- tooltip for this is set in JS -->
+            <a id="toolbar-extension-manager" href="#"></a>
+            <a id="update-notification" href="#" class="forced-hidden"></a>
+        </div>
+        <div class="bottom-buttons">
+        </div>
+    </div>
+</div>
+
+<!-- Hack to ensure that the code editor's web font is loaded early. -->
+<!-- For more info, see note in brackets.less for class .dummy-text, or issue 76 -->
+<div class="dummy-text">x</div>
+</div>
+
+<!-- Modal Windows -->
+<div id="context-menu-bar">
+    <ul data-dropdown="dropdown"></ul>
+</div>
+<div id="codehint-menu-bar">
+    <ul data-dropdown="dropdown"></ul>
+</div>
+<div id="inlinemenu-menu-bar">
+    <ul data-dropdown="dropdown"></ul>
+</div>
+<div id="hidden-editors"></div>
+<!-- Notification bar -->
+<div id="toast-notification-container">
+</div>
+
+<div id="ctrl-nav-overlay" class="forced-hidden">
+    <div class="arrowDivs">
+        <i class="fa-solid fa-arrows-up-down-left-right"></i>
+    </div>
+    <div id="overlay-instruction-text" class="instruction-text">
+    </div>
+</div>
 <!-- HTML content is dynamically loaded and rendered by brackets.js after _loadPhoenixAfterSplashScreen.
      Any modules that depend on or modify HTML during load should
      require the "utils/AppInit" module and install a callback for

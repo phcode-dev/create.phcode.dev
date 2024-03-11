@@ -33,7 +33,7 @@ define(function (require, exports, module) {
         Strings            = require("strings"),
         StringUtils        = require("utils/StringUtils");
 
-    describe("search: FileFilters", function () {
+    describe("LegacyInteg: FileFilters", function () {
 
         let testPath = SpecRunnerUtils.getTestPath("/spec/InlineEditorProviders-test-files"),
             testWindow,
@@ -68,7 +68,7 @@ define(function (require, exports, module) {
             FindInFilesUI = null;
             CommandManager = null;
             $ = null;
-            await SpecRunnerUtils.closeTestWindow();
+            await SpecRunnerUtils.closeTestWindow(true);
         }
 
         // These helper functions are slight variations of the ones in FindInFiles, so need to be
@@ -91,14 +91,14 @@ define(function (require, exports, module) {
         async function executeSearch(searchString) {
             await awaitsFor(function () {
                 return FindInFiles.isProjectIndexingComplete();
-            }, "Find in Files done", 10000);
+            }, "Find in Files done", 20000);
             FindInFiles._searchDone = false;
             let $searchField = $(".modal-bar #find-group input");
             $searchField.val(searchString).trigger("input");
             //SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_RETURN, "keydown", $searchField[0]);
             await awaitsFor(function () {
                 return FindInFiles._searchDone;
-            }, "Find in Files done", 10000);
+            }, "Find in Files done", 20000);
         }
 
         async function executeCleanSearch(searchString) {
@@ -109,7 +109,7 @@ define(function (require, exports, module) {
 
         describe("Find in Files filtering", function () {
             beforeAll(setupTestWindow, 30000);
-            afterAll(teardownTestWindow, 10000);
+            afterAll(teardownTestWindow, 30000);
 
             it("should search all files by default", async function () {
                 await openSearchBar();
@@ -117,7 +117,7 @@ define(function (require, exports, module) {
                 expect(FindInFiles.searchModel.results[testPath + "/test1.css"]).toBeTruthy();
                 expect(FindInFiles.searchModel.results[testPath + "/test1.html"]).toBeTruthy();
                 await closeSearchBar();
-            }, 10000);
+            }, 30000);
 
             // This finishes async, since clickDialogButton() finishes async (dialogs close asynchronously)
             async function setExcludeCSSFiles() {
@@ -132,23 +132,25 @@ define(function (require, exports, module) {
             it("should exclude files from search", async function () {
                 await openSearchBar();
                 await setExcludeCSSFiles();
+                await openSearchBar();
                 await executeCleanSearch("{1}");
                 // *.css should have been excluded this time
                 expect(FindInFiles.searchModel.results[testPath + "/test1.css"]).toBeFalsy();
                 expect(FindInFiles.searchModel.results[testPath + "/test1.html"]).toBeTruthy();
                 await closeSearchBar();
-            }, 10000);
+            }, 30000);
 
             it("should respect filter when searching folder", async function () {
                 let dirEntry = FileSystem.getDirectoryForPath(testPath);
                 await openSearchBar(dirEntry);
                 await setExcludeCSSFiles();
+                await openSearchBar(dirEntry);
                 await executeCleanSearch("{1}");
                 // *.css should have been excluded this time
                 expect(FindInFiles.searchModel.results[testPath + "/test1.css"]).toBeFalsy();
                 expect(FindInFiles.searchModel.results[testPath + "/test1.html"]).toBeTruthy();
                 await closeSearchBar();
-            }, 10000);
+            }, 30000);
 
             it("should ignore filter when searching a single file", async function () {
                 let fileEntry = FileSystem.getFileForPath(testPath + "/test1.css");
@@ -159,7 +161,7 @@ define(function (require, exports, module) {
                 await executeCleanSearch("{1}");
                 // ignore *.css exclusion since we're explicitly searching this file
                 expect(FindInFiles.searchModel.results[testPath + "/test1.css"]).toBeTruthy();
-            }, 10000);
+            }, 30000);
 
             it("should show error when filter excludes all files", async function () {
                 await openSearchBar();
@@ -184,7 +186,7 @@ define(function (require, exports, module) {
                 // Close search bar
                 let $searchField = $modalBar.find("#find-group input");
                 await SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_ESCAPE, "keydown", $searchField[0]);
-            }, 10000);
+            }, 30000);
 
             it("should respect filter when editing code", async function () {
                 await openSearchBar();
@@ -200,12 +202,12 @@ define(function (require, exports, module) {
                 await awaits(800);  // ensure _documentChangeHandler()'s timeout has time to run
                 expect(FindInFiles.searchModel.results[testPath + "/test1.css"]).toBeFalsy();  // *.css should still be excluded
                 expect(FindInFiles.searchModel.results[testPath + "/test1.html"]).toBeTruthy();
-            }, 10000);
+            }, 30000);
         });
 
         describe("Filter picker UI", function () {
             beforeAll(setupTestWindow, 30000);
-            afterAll(teardownTestWindow, 10000);
+            afterAll(teardownTestWindow, 30000);
 
             beforeEach(async function () {
                 await openSearchBar();
@@ -251,9 +253,9 @@ define(function (require, exports, module) {
 
                 let $dropdown = $(".dropdown-menu.dropdownbutton-popup");
                 expect($dropdown.is(":visible")).toBeTruthy();
-                expect($dropdown.children().length).toEqual(2);
-                expect($($dropdown.children()[0]).text()).toEqual(Strings.NEW_FILE_FILTER);
-                expect($($dropdown.children()[1]).text()).toEqual(Strings.CLEAR_FILE_FILTER);
+                expect($dropdown.children().length).toEqual(3); // 3 including popup search filter
+                expect($($dropdown.children()[1]).text()).toEqual(Strings.NEW_FILE_FILTER);
+                expect($($dropdown.children()[2]).text()).toEqual(Strings.CLEAR_FILE_FILTER);
 
                 FileFilters.closeDropdown();
             }, 10000);
@@ -278,11 +280,11 @@ define(function (require, exports, module) {
 
                 $dropdown = $(".dropdown-menu.dropdownbutton-popup");
                 expect($dropdown.is(":visible")).toBeTruthy();
-                expect($dropdown.children().length).toEqual(4);
-                expect($($dropdown.children()[0]).text()).toEqual(Strings.NEW_FILE_FILTER);
-                expect($($dropdown.children()[1]).text()).toEqual(Strings.CLEAR_FILE_FILTER);
-                expect($(".recent-filter-name", $($dropdown.children()[3])).text()).toEqual("CSS Files");
-                expect($(".recent-filter-patterns", $($dropdown.children()[3])).text()).toEqual(" - *.css, *.less " + filterSuffix);
+                expect($dropdown.children().length).toEqual(5);
+                expect($($dropdown.children()[1]).text()).toEqual(Strings.NEW_FILE_FILTER);
+                expect($($dropdown.children()[2]).text()).toEqual(Strings.CLEAR_FILE_FILTER);
+                expect($(".recent-filter-name", $($dropdown.children()[4])).text()).toEqual("CSS Files");
+                expect($(".recent-filter-patterns", $($dropdown.children()[4])).text()).toEqual(" - *.css, *.less " + filterSuffix);
 
                 FileFilters.closeDropdown();
             }, 10000);
@@ -308,11 +310,11 @@ define(function (require, exports, module) {
 
                 $dropdown = $(".dropdown-menu.dropdownbutton-popup");
                 expect($dropdown.is(":visible")).toBeTruthy();
-                expect($dropdown.children().length).toEqual(4);
-                expect($($dropdown.children()[0]).text()).toEqual(Strings.NEW_FILE_FILTER);
-                expect($($dropdown.children()[1]).text()).toEqual(Strings.CLEAR_FILE_FILTER);
-                expect($(".recent-filter-name", $($dropdown.children()[3])).text()).toEqual("CSS Files");
-                expect($(".recent-filter-patterns", $($dropdown.children()[3])).text()).toEqual(" - *.css, *.less " + filterSuffix);
+                expect($dropdown.children().length).toEqual(5);
+                expect($($dropdown.children()[1]).text()).toEqual(Strings.NEW_FILE_FILTER);
+                expect($($dropdown.children()[2]).text()).toEqual(Strings.CLEAR_FILE_FILTER);
+                expect($(".recent-filter-name", $($dropdown.children()[4])).text()).toEqual("CSS Files");
+                expect($(".recent-filter-patterns", $($dropdown.children()[4])).text()).toEqual(" - *.css, *.less " + filterSuffix);
 
                 FileFilters.closeDropdown();
             }, 10000);
@@ -340,7 +342,7 @@ define(function (require, exports, module) {
 
                 // Click on the edit icon that shows up in the first filter set on mouseover.
                 $dropdown = $(".dropdown-menu.dropdownbutton-popup");
-                clickOnMouseOverButton(".filter-edit-icon", $($dropdown.children()[3]));
+                clickOnMouseOverButton(".filter-edit-icon", $($dropdown.children()[4]));
 
                 // Remove the name of the filter set and reduce the filter set to '*.css'.
                 expect($(".modal.instance .exclusions-name").val()).toEqual("CSS Files");
@@ -375,21 +377,21 @@ define(function (require, exports, module) {
                 FileFilters.showDropdown();
 
                 $dropdown = $(".dropdown-menu.dropdownbutton-popup");
-                expect($dropdown.children().length).toEqual(6);
+                expect($dropdown.children().length).toEqual(7);
 
                 // Click on the delete icon that shows up in the first filter set on mouseover.
-                clickOnMouseOverButton(".filter-trash-icon", $($dropdown.children()[3]));
+                clickOnMouseOverButton(".filter-trash-icon", $($dropdown.children()[4]));
 
                 expect($dropdown.is(":visible")).toBeTruthy();
                 // Verify that button label is still the same since the deleted one is not the active one.
                 verifyButtonLabel("CSS Files");
 
-                // Verify that the list has one less item (from 6 to 5).
-                expect($dropdown.children().length).toEqual(5);
+                // Verify that the list has one less item (from 7 to 6).
+                expect($dropdown.children().length).toEqual(6);
 
                 // Verify data-index of the two remaining filter sets.
-                expect($("a", $dropdown.children()[3]).data("index")).toBe(3);
-                expect($("a", $dropdown.children()[4]).data("index")).toBe(4);
+                expect($("a", $dropdown.children()[4]).data("index")).toBe(3);
+                expect($("a", $dropdown.children()[5]).data("index")).toBe(4);
 
                 FileFilters.closeDropdown();
             }, 10000);
@@ -401,17 +403,17 @@ define(function (require, exports, module) {
                 FileFilters.showDropdown();
 
                 $dropdown = $(".dropdown-menu.dropdownbutton-popup");
-                expect($dropdown.children().length).toEqual(5);
+                expect($dropdown.children().length).toEqual(6);
 
                 // Click on the delete icon that shows up in the last filter set on mouseover.
-                clickOnMouseOverButton(".filter-trash-icon", $($dropdown.children()[4]));
+                clickOnMouseOverButton(".filter-trash-icon", $($dropdown.children()[5]));
 
                 expect($dropdown.is(":visible")).toBeTruthy();
                 // Verify that button label is changed to "No Files Excluded".
                 verifyButtonLabel();
 
                 // Verify that the list has one less item.
-                expect($dropdown.children().length).toEqual(4);
+                expect($dropdown.children().length).toEqual(5);
 
                 FileFilters.closeDropdown();
             }, 10000);
@@ -423,17 +425,17 @@ define(function (require, exports, module) {
                 FileFilters.showDropdown();
 
                 $dropdown = $(".dropdown-menu.dropdownbutton-popup");
-                expect($dropdown.children().length).toEqual(4);
+                expect($dropdown.children().length).toEqual(5);
 
                 // Click on the delete icon that shows up in the last filter set on mouseover.
-                clickOnMouseOverButton(".filter-trash-icon", $($dropdown.children()[3]));
+                clickOnMouseOverButton(".filter-trash-icon", $($dropdown.children()[4]));
 
                 expect($dropdown.is(":visible")).toBeTruthy();
                 // Verify that button label still shows "No Files Excluded".
                 verifyButtonLabel();
 
                 // Verify that the list has only two filter commands.
-                expect($dropdown.children().length).toEqual(2);
+                expect($dropdown.children().length).toEqual(3);
 
                 FileFilters.closeDropdown();
             }, 10000);

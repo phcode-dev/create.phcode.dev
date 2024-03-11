@@ -33,7 +33,7 @@ define(function (require, exports, module) {
 
     var PreferencesManager;
 
-    describe("search:FindInFiles", function () {
+    describe("LegacyInteg:FindInFiles", function () {
 
         var defaultSourcePath = SpecRunnerUtils.getTestPath("/spec/FindReplace-test-files"),
             testPath,
@@ -93,7 +93,7 @@ define(function (require, exports, module) {
             PreferencesManager  = null;
             await SpecRunnerUtils.closeTestWindow();
             await SpecRunnerUtils.removeTempDirectory();
-        });
+        }, 30000);
 
         async function openProject(sourcePath) {
             testPath = sourcePath;
@@ -259,6 +259,56 @@ define(function (require, exports, module) {
                 expect(fileResults.matches.length).toBe(3);
             });
 
+            it("should find all occurrences in node_modules folder", async function () {
+                var dirEntry = FileSystem.getDirectoryForPath(testPath + "/node_modules/");
+                await openSearchBar(dirEntry);
+                await executeSearch("foo");
+
+                var fileResults = FindInFiles.searchModel.results[testPath + "/bar.txt"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/foo.html"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/foo.js"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/css/foo.css"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/node_modules/node_modules/test2.js"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/node_modules/test.js"];
+                expect(fileResults).toBeTruthy();
+                expect(fileResults.matches.length).toBe(1);
+            });
+
+            it("should find all occurrences in nested node_modules folder", async function () {
+                var dirEntry = FileSystem.getDirectoryForPath(testPath + "/node_modules/node_modules/");
+                await openSearchBar(dirEntry);
+                await executeSearch("foo");
+
+                var fileResults = FindInFiles.searchModel.results[testPath + "/bar.txt"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/foo.html"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/foo.js"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/css/foo.css"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/node_modules/test.js"];
+                expect(fileResults).toBeFalsy();
+
+                fileResults = FindInFiles.searchModel.results[testPath + "/node_modules/node_modules/test2.js"];
+                expect(fileResults).toBeTruthy();
+                expect(fileResults.matches.length).toBe(1);
+            });
+
             it("should find all occurences in single file", async function () {
                 var fileEntry = FileSystem.getFileForPath(testPath + "/foo.js");
                 await openSearchBar(fileEntry);
@@ -313,19 +363,19 @@ define(function (require, exports, module) {
                 let editor;
                 await awaitsFor(function () {
                     editor = SearchResultsView._previewEditorForTests;
-                    return (editor && editor.document.file.fullPath === "/test/spec/FindReplace-test-files/css/foo.css");
-                }, "keyboard nav", 1000);
+                    return (editor && editor.document.file.fullPath === SpecRunnerUtils.getTestPath("/spec/FindReplace-test-files/css/foo.css"));
+                }, "file open");
                 SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_DOWN, "keydown", $searchField[0]);
                 await awaitsFor(function () {
                     editor = SearchResultsView._previewEditorForTests;
-                    return (editor && editor.document.file.fullPath === "/test/spec/FindReplace-test-files/foo.js");
-                }, "keyboard nav", 1000);
+                    return (editor && editor.document.file.fullPath === SpecRunnerUtils.getTestPath("/spec/FindReplace-test-files/foo.js"));
+                }, "keyboard nav down");
                 SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_UP, "keydown", $searchField[0]);
                 await awaitsFor(function () {
                     editor = SearchResultsView._previewEditorForTests;
                     console.log(editor && editor.document.file.fullPath);
-                    return (editor && editor.document.file.fullPath === "/test/spec/FindReplace-test-files/css/foo.css");
-                }, "keyboard nav", 1000);
+                    return (editor && editor.document.file.fullPath === SpecRunnerUtils.getTestPath("/spec/FindReplace-test-files/css/foo.css"));
+                }, "keyboard nav up");
             });
 
             it("should find start and end positions", async function () {

@@ -62,36 +62,18 @@ define(function (require, exports, module) {
      */
     var extListToBeOpenedInExtApp = [];
 
-    function _getDecodedString(buffer, encoding) {
-        try {
-            return new TextDecoder(encoding).decode(buffer);
-        } catch (e) {
-            return null;
-        }
-    }
-
     /**
      * Asynchronously reads a file as UTF-8 encoded text.
      * @param {!File} file File to read
+     * @param {boolean?} bypassCache - an optional argument, if specified will read from disc instead of using cache.
      * @return {$.Promise} a jQuery promise that will be resolved with the
      *  file's text content plus its timestamp, or rejected with a FileSystemError string
      *  constant if the file can not be read.
      */
-    function readAsText(file) {
-        var result = new $.Deferred();
+    function readAsText(file, bypassCache) {
+        const result = new $.Deferred();
 
-        // Measure performance
-        var perfTimerName = PerfUtils.markStart("readAsText:\t" + file.fullPath);
-        result.always(function () {
-            PerfUtils.addMeasurement(perfTimerName);
-        });
-
-        // Read file as utf-8. there is a bug in virtual file system(filer) where filer will try utf-8fy the string
-        // returned even if it is not utf-8. But on native fs, this will return an error.
-        // We need to modify filer vfs to throw error when reading non utf-8 strings ideally.
-        // Or We could add the check here by read as binary here and use the utf-8 check mechanism
-        // in "phoenix-fs lib :fslib_native.js" to check if it is valid utf-8
-        file.read({encoding: 'utf8'},function (err, data, encoding, stat) {
+        file.read({bypassCache: bypassCache}, function (err, data, _encoding, stat) {
             if (!err) {
                 result.resolve(data, stat.mtime);
             } else {
@@ -113,7 +95,7 @@ define(function (require, exports, module) {
      * file writing completes, or rejected with a FileSystemError string constant.
      */
     function writeText(file, text, allowBlindWrite) {
-        var result = new $.Deferred(),
+        const result = new $.Deferred(),
             options = {};
 
         if (allowBlindWrite) {

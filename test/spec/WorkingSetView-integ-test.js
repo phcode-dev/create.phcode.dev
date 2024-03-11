@@ -37,6 +37,7 @@ define(function (require, exports, module) {
     describe("mainview:WorkingSetView", function () {
 
         var testPath = SpecRunnerUtils.getTestPath("/spec/WorkingSetView-test-files"),
+            externalProjectTestPath = SpecRunnerUtils.getTestPath("/spec/MainViewManager-test-files"),
             testWindow,
             workingSetListItemCount;
 
@@ -48,7 +49,7 @@ define(function (require, exports, module) {
                 .done(function () { didOpen = true; })
                 .fail(function () { gotError = true; });
             await awaitsFor(function () { return didOpen && !gotError; },
-                "FILE_OPEN on file timeout", 1000);
+                "FILE_OPEN on file timeout");
 
             // change editor content to make doc dirty which adds it to the working set
             doc = DocumentManager.getCurrentDocument();
@@ -89,11 +90,11 @@ define(function (require, exports, module) {
 
         beforeAll(async function () {
             await createTestWindow(this, true);
-        });
+        }, 30000);
 
         afterAll(async function () {
             await closeTestWindow();
-        });
+        }, 30000);
 
         beforeEach(async function () {
             workingSetListItemCount = 0;
@@ -102,7 +103,7 @@ define(function (require, exports, module) {
             await openAndMakeDirty(testPath + "/file_two.js");
 
             // Wait for both files to be added to the working set
-            await awaitsFor(function () { return workingSetListItemCount === 2; }, "workingSetListItemCount to equal 2", 1000);
+            await awaitsFor(function () { return workingSetListItemCount === 2; }, "workingSetListItemCount to equal 2");
         });
 
         afterEach(async function () {
@@ -125,7 +126,7 @@ define(function (require, exports, module) {
             CommandManager.execute(Commands.FILE_CLOSE)
                 .done(function () { didClose = true; })
                 .fail(function () { gotError = true; });
-            await awaitsFor(function () { return didClose && !gotError; }, "FILE_OPEN on file timeout", 1000);
+            await awaitsFor(function () { return didClose && !gotError; }, "FILE_OPEN on file timeout");
 
             // check there are no list items
             var listItems = testWindow.$(".open-files-container > ul").children();
@@ -169,7 +170,7 @@ define(function (require, exports, module) {
 
             closeIcon.trigger("mousedown");
 
-            await awaitsFor(function () { return didClose; }, "click on working set close icon timeout", 1000);
+            await awaitsFor(function () { return didClose; }, "click on working set close icon timeout");
 
             var $listItems = $(".open-files-container > ul").children();
             expect($listItems.length).toBe(1);
@@ -211,11 +212,35 @@ define(function (require, exports, module) {
             await openAndMakeDirty(testPath + "/directory/file_one.js");
 
             // Wait for file to be added to the working set
-            await awaitsFor(function () { return workingSetListItemCount === workingSetListItemCountBeforeTest + 1; }, 1000);
+            await awaitsFor(function () { return workingSetListItemCount === workingSetListItemCountBeforeTest + 1; });
 
             // Two files with the same name file_one.js should be now opened
             var $list = testWindow.$(".open-files-container > ul");
             expect($list.find(".directory").length).toBe(2);
+
+            // Now close last opened file to hide the directories again
+            DocumentManager.getCurrentDocument()._markClean(); // so we can close without a save dialog
+            await awaitsForDone(CommandManager.execute(Commands.FILE_CLOSE), "timeout on FILE_CLOSE", 1000);
+
+            // there should be no more directories shown
+            expect($list.find(".directory").length).toBe(0);
+        });
+
+        it("should show full path next to the file name when file is outside current project", async function () {
+            // Count currently opened files
+            var workingSetListItemCountBeforeTest = workingSetListItemCount;
+
+            // First we need to open another file
+            await openAndMakeDirty(externalProjectTestPath + "/test.js");
+
+            // Wait for file to be added to the working set
+            await awaitsFor(function () { return workingSetListItemCount === workingSetListItemCountBeforeTest + 1; });
+
+            // Two files with the same name file_one.js should be now opened
+            var $list = testWindow.$(".open-files-container > ul");
+            const fullPathSpan = $list.find(".directory");
+            expect(fullPathSpan.length).toBe(1);
+            expect(fullPathSpan[0].innerHTML.includes(Phoenix.app.getDisplayPath(externalProjectTestPath))).toBe(true);
 
             // Now close last opened file to hide the directories again
             DocumentManager.getCurrentDocument()._markClean(); // so we can close without a save dialog
@@ -234,7 +259,7 @@ define(function (require, exports, module) {
             await openAndMakeDirty(testPath + "/directory/directory/file_one.js");
 
             // Wait for them to load
-            await awaitsFor(function () { return workingSetListItemCount === workingSetListItemCountBeforeTest + 2; }, "Open file count to be increased by 2", 1000);
+            await awaitsFor(function () { return workingSetListItemCount === workingSetListItemCountBeforeTest + 2; }, "Open file count to be increased by 2");
 
             // Collect all directory names displayed
             var $list = testWindow.$(".open-files-container > ul");

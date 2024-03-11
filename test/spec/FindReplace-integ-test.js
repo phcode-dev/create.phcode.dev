@@ -67,7 +67,7 @@ define(function (require, exports, module) {
         return sels;
     }
 
-    describe("search:FindReplace - Integration", function () {
+    describe("LegacyInteg:FindReplace - Integration", function () {
 
         var LINE_FIRST_REQUIRE = 2;
         var CH_REQUIRE_START = 14;
@@ -166,7 +166,7 @@ define(function (require, exports, module) {
         async function waitsForSearchBarClose() {
             await awaitsFor(function () {
                 return getSearchBar().length === 0;
-            }, 1000, "search bar closing");
+            },  "search bar closing");
         }
         async function waitsForSearchBarReopen() {
             // If Find is invoked again while a previous Find bar is already up, we want to
@@ -174,7 +174,7 @@ define(function (require, exports, module) {
             // which modal bar to look at.
             await awaitsFor(function () {
                 return getSearchBar().length === 1;
-            }, 1000, "search bar reopening");
+            },  "search bar reopening");
         }
 
         function enterSearchText(str) {
@@ -193,6 +193,16 @@ define(function (require, exports, module) {
         function pressEscape() {
             expectSearchBarOpen();
             SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_ESCAPE, "keydown", getSearchField()[0]);
+        }
+
+        function pressDownArrow() {
+            expectSearchBarOpen();
+            SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_DOWN, "keydown", getSearchField()[0]);
+        }
+
+        function pressUpArrow() {
+            expectSearchBarOpen();
+            SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_UP, "keydown", getSearchField()[0]);
         }
 
         function toggleCaseSensitive(val) {
@@ -230,7 +240,7 @@ define(function (require, exports, module) {
             await SpecRunnerUtils.closeTestWindow();
 
             await SpecRunnerUtils.removeTempDirectory();
-        });
+        }, 30000);
 
         beforeEach(async function () {
             await awaitsForDone(twCommandManager.execute(Commands.FILE_NEW_UNTITLED));
@@ -397,6 +407,31 @@ define(function (require, exports, module) {
                 expectMatchIndex(1, 3);
             });
 
+            it("Should find next and previous on down and up arrow key press", function () {
+                myEditor.setCursorPos(0, 0);
+
+                twCommandManager.execute(Commands.CMD_FIND);
+
+                enterSearchText("Foo");
+                expectHighlightedMatches(fooExpectedMatches);
+                expectMatchIndex(0, 4);
+
+                pressDownArrow();
+                expectMatchIndex(1, 4);
+                pressDownArrow();
+                expectMatchIndex(2, 4);
+
+                pressUpArrow();
+                expectMatchIndex(1, 4);
+                pressUpArrow();
+                expectMatchIndex(0, 4);
+                pressUpArrow();
+                expectMatchIndex(3, 4);
+
+                pressDownArrow();
+                expectMatchIndex(0, 4);
+
+            });
 
             it("should Find Next after search bar closed, including wraparound", async function () {
                 myEditor.setCursorPos(0, 0);

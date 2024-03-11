@@ -46,14 +46,26 @@ define(function (require, exports, module) {
         loggedDataForAudit = new Map();
 
     let isFirstUseDay;
-    function _setFirstDayFlag() {
-        let firstUseDay= localStorage.getItem("healthData.firstUseDay");
-        if(!firstUseDay){
-            firstUseDay = new Date();
-            localStorage.setItem("healthData.firstUseDay", `${firstUseDay.getTime()}`);
-        } else {
-            firstUseDay = new Date(parseInt(firstUseDay));
+    let userID;
+
+    function _setUserID() {
+        const userIDKey = "phoenixUserPseudoID";
+        userID = window.PhStore.getItem(userIDKey);
+        if(!userID){
+            userID = crypto.randomUUID();
+            window.PhStore.setItem(userIDKey, userID);
         }
+    }
+    _setUserID();
+
+    function _setFirstDayFlag() {
+        const firstUseDayKey = "healthData.firstUseDay";
+        let firstBootTime = window.PhStore.getItem(firstUseDayKey);
+        if(!firstBootTime){
+            firstBootTime = Date.now();
+            window.PhStore.setItem(firstUseDayKey, firstBootTime);
+        }
+        let firstUseDay= new Date(firstBootTime);
         let dayAfterFirstUse = new Date(firstUseDay);
         dayAfterFirstUse.setUTCDate(firstUseDay.getUTCDate() + 1);
         let today = new Date();
@@ -82,11 +94,13 @@ define(function (require, exports, module) {
         PROJECT: "project",
         THEMES: "themes",
         EXTENSIONS: "extensions",
+        NOTIFICATIONS: "notifications",
         UI: "phoenix.UI",
         UI_MENU: "phoenix.UIMenu",
         UI_DIALOG: "ui-dialog",
         UI_BOTTOM_PANEL: "ui-bottomPanel",
         UI_SIDE_PANEL: "ui-sidePanel",
+        UPDATES: "update",
         LIVE_PREVIEW: "live-preview",
         KEYBOARD: "keyboard",
         CODE_HINTS: "code-hints",
@@ -98,7 +112,8 @@ define(function (require, exports, module) {
         STORAGE: "storage",
         NEW_PROJECT: "new-project",
         ERROR: "error",
-        USER: "user"
+        USER: "user",
+        NODEJS: "node"
     };
 
     /**
@@ -114,20 +129,72 @@ define(function (require, exports, module) {
             event: function (){window.analytics._initData.push(arguments);}
         };}
         // for google analytics
-        window.dataLayer = window.dataLayer || [];
-        window.gtag = function(){window.dataLayer.push(arguments);};
+        if(!Phoenix.browser.isTauri) {
+            // ga is not inpage in tauri builds. see below explanation in _initGoogleAnalytics
+            window.dataLayer = window.dataLayer || [];
+            window.gtag = function(){
+                window.dataLayer.push(arguments);
+                if(window.dataLayer.length > 500){
+                    window.dataLayer.splice(0, 250); // remove half the elements(offline queue guard)
+                }
+            };
+        }
     }
 
     _createAnalyticsShims();
 
+    function _sendTauriGAEvent(analyticsID, customUserID, events=[]) {
+        window.__TAURI__.event.emit("health", {
+            analyticsID: analyticsID,
+            customUserID: customUserID,
+            events
+        });
+    }
+
+    let tauriGAEvents = new Map();
+
+    function _sendGaEvent(eventAct, category, label, count) {
+        if(Phoenix.browser.isTauri) {
+            const key = `${eventAct}:${category}:${label}}`;
+            const existingEvent = tauriGAEvents.get(key);
+            if(existingEvent) {
+                existingEvent.count = (existingEvent.count||0) + count;
+                return;
+            }
+            tauriGAEvents.set(key, {eventAct, category, label, count});
+            return;
+        }
+        gtag('event', eventAct, {
+            'event_category': category,
+            'event_label': label,
+            'value': count
+        });
+    }
+
+    const TAURI_GA_EVENT_QUEUE_INTERVAL = 3000;
+    function _sendQueuedTauriGAEvents() {
+        _sendTauriGAEvent(brackets.config.googleAnalyticsIDDesktop, userID, Array.from(tauriGAEvents.values()));
+        tauriGAEvents.clear();
+    }
+
     function _initGoogleAnalytics() {
         // Load google analytics scripts
+        if(Phoenix.browser.isTauri) {
+            // in tauri google analytics is in a hidden window instead of current page as ga only supports http and
+            // https urls and not the tauri custom protocol urls. So we have a hidden window that loads ga from a
+            // http(s) page which is usually `https://phcode.dev/desktop-metrics.html` or
+            // "http://localhost:8000/src/metrics.html" for live dev builds in tauri.
+            _sendTauriGAEvent(brackets.config.googleAnalyticsIDDesktop, userID);
+            setInterval(_sendQueuedTauriGAEvents, TAURI_GA_EVENT_QUEUE_INTERVAL);
+            return;
+        }
         let script = document.createElement('script');
         script.type = 'text/javascript';
         script.async = true;
         script.onload = function(){
             gtag('js', new Date());
 
+            // TODO use googleAnalyticsIDDesktop for desktop analytics
             gtag('config', brackets.config.googleAnalyticsID, {
                 'page_title': 'Phoenix editor',
                 'page_path': '/index.html',
@@ -138,17 +205,6 @@ define(function (require, exports, module) {
         document.getElementsByTagName('head')[0].appendChild(script);
     }
 
-    function _initMixPanelAnalytics() {
-        // evaluating mixpanel instead of Google Analytics
-        // Enabling the debug mode flag is useful during implementation,
-        // but it's recommended you remove it for production
-        if(!window.mixpanel){
-            console.error("Mixpanel not found. MixPanel Analytics will not be initialized.");
-            return;
-        }
-        mixpanel.init(brackets.config.mixPanelID, {debug: window.debugMode});
-    }
-
     function _initCoreAnalytics() {
         // Load core analytics scripts
         let script = document.createElement('script');
@@ -157,8 +213,10 @@ define(function (require, exports, module) {
         window.analytics.debugMode = window.debugMode;
         script.onload = function(){
             // replace `your_analytics_account_ID` and `appName` below with your values
-            window.initAnalyticsSession( brackets.config.coreAnalyticsID,
-                brackets.config.coreAnalyticsAppName);
+            const appName = Phoenix.browser.isTauri ?
+                brackets.config.coreAnalyticsAppNameDesktop:
+                brackets.config.coreAnalyticsAppName;
+            window.initAnalyticsSession( brackets.config.coreAnalyticsID, appName);
             window.analytics.event("core-analytics", "client-lib", "loadTime", 1,
                 (new Date().getTime())- window.analytics.loadStartTime);
         };
@@ -176,7 +234,6 @@ define(function (require, exports, module) {
             return;
         }
         _initGoogleAnalytics();
-        _initMixPanelAnalytics();
         _initCoreAnalytics();
         initDone = true;
     }
@@ -202,30 +259,7 @@ define(function (require, exports, module) {
         if(ignoredGAEvents.includes(action)){
             return;
         }
-        gtag('event', eventAct, {
-            'event_category': category,
-            'event_label': label,
-            'value': count
-        });
-    }
-
-    function _sendToMixPanel(category, action, label, count, value) {
-        if(disabled || window.testEnvironment){
-            return;
-        }
-        category = category || "category";
-        action = action || "action";
-        if(!label){
-            label = action;
-        }
-        count = count || 1;
-        value = value || 1;
-        if(!window.mixpanel || !mixpanel.track) {
-            return;
-        }
-        mixpanel.track(category, {
-            action, label, count, value
-        });
+        _sendGaEvent(eventAct, category, label, count);
     }
 
     function _sendToCoreAnalytics(category, action, label, count, value) {
@@ -267,7 +301,6 @@ define(function (require, exports, module) {
     function _countEvent(eventType, eventCategory, eventSubCategory, count= 1) {
         _logEventForAudit(eventType, eventCategory, eventSubCategory, count, AUDIT_TYPE_COUNT);
         _sendToGoogleAnalytics(eventType, eventCategory, eventSubCategory, count);
-        _sendToMixPanel(eventType, eventCategory, eventSubCategory, count);
         _sendToCoreAnalytics(eventType, eventCategory, eventSubCategory, count);
     }
 
@@ -297,7 +330,6 @@ define(function (require, exports, module) {
     function _valueEvent(eventType, eventCategory, eventSubCategory, value) {
         _logEventForAudit(eventType, eventCategory, eventSubCategory, value, AUDIT_TYPE_VALUE);
         _sendToGoogleAnalytics(eventType, eventCategory, eventSubCategory, value);
-        _sendToMixPanel(eventType, eventCategory, eventSubCategory, 1, value);
         _sendToCoreAnalytics(eventType, eventCategory, eventSubCategory, 1, value);
     }
 
@@ -327,6 +359,10 @@ define(function (require, exports, module) {
         disabled = shouldDisable;
     }
 
+    function isDisabled() {
+        return disabled;
+    }
+
     function getLoggedDataForAudit() {
         return loggedDataForAudit;
     }
@@ -335,13 +371,29 @@ define(function (require, exports, module) {
         loggedDataForAudit.clear();
     }
 
+    /**
+     * Send all pending metrics, useful before app quit.
+     * Will never throw Error.
+     */
+    async function flushMetrics() {
+        try{
+            if(Phoenix.browser.isTauri) {
+                _sendQueuedTauriGAEvents();
+            }
+        } catch (e) {
+            console.error("Error while flushMetrics: ", e);
+        }
+    }
+
     // Define public API
     exports.init               = init;
     exports.setDisabled        = setDisabled;
+    exports.isDisabled         = isDisabled;
     exports.getLoggedDataForAudit      = getLoggedDataForAudit;
     exports.clearAuditData     = clearAuditData;
     exports.countEvent         = countEvent;
     exports.valueEvent         = valueEvent;
+    exports.flushMetrics       = flushMetrics;
     exports.EVENT_TYPE = EVENT_TYPE;
     exports.AUDIT_TYPE_COUNT = AUDIT_TYPE_COUNT;
     exports.AUDIT_TYPE_VALUE = AUDIT_TYPE_VALUE;

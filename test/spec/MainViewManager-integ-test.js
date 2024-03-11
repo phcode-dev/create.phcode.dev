@@ -19,7 +19,7 @@
  *
  */
 
-/*global describe, beforeEach, beforeAll, afterAll, afterEach, it, expect, awaitsForDone, spyOn, jasmine */
+/*global describe, beforeEach, beforeAll, afterAll, afterEach, it, expect, awaitsForDone, spyOn, jasmine, Phoenix */
 
 define(function (require, exports, module) {
 
@@ -40,9 +40,10 @@ define(function (require, exports, module) {
 
     describe("mainview:MainViewManager", function () {
 
-        var testPath = SpecRunnerUtils.getTestPath("/spec/MainViewManager-test-files"),
+        let testPath = SpecRunnerUtils.getTestPath("/spec/MainViewManager-test-files"),
             testWindow,
             _$,
+            savedIsWithinProject,
             promise;
 
         var getFileObject = function (name) {
@@ -64,14 +65,16 @@ define(function (require, exports, module) {
             Dialogs                 = testWindow.brackets.test.Dialogs,
             Menus                   = testWindow.brackets.test.Menus;
             _$                      = testWindow.$;
+            savedIsWithinProject    = ProjectManager.isWithinProject;
         }
 
         beforeAll(async function () {
-            testWindow = await SpecRunnerUtils.createTestWindowAndRun();
+            testWindow = await SpecRunnerUtils.createTestWindowAndRun({forceReload: true});
             await _init();
         }, 30000);
 
         afterAll(async function () {
+            ProjectManager.isWithinProject = savedIsWithinProject;
             MainViewManager._closeAll(MainViewManager.ALL_PANES);
             testWindow              = null;
             CommandManager          = null;
@@ -80,8 +83,8 @@ define(function (require, exports, module) {
             EditorManager           = null;
             ProjectManager          = null;
             FileSystem              = null;
-            //await SpecRunnerUtils.closeTestWindow();
-        });
+            await SpecRunnerUtils.closeTestWindow();
+        }, 30000);
 
         beforeEach(async function () {
             MainViewManager._closeAll(MainViewManager.ALL_PANES);
@@ -105,6 +108,36 @@ define(function (require, exports, module) {
             });
             it("Pane should not have a title", function () {
                 expect(MainViewManager.getPaneTitle("first-pane")).toBeFalsy();
+            });
+        });
+
+        describe("Title bar", function () {
+            it("should have a title bar in browser windows", async function () {
+                if(Phoenix.browser.isTauri) {
+                    return;
+                }
+
+                const promise = MainViewManager._open(MainViewManager.FIRST_PANE, FileSystem.getFileForPath(testPath + "/test.js"));
+                await awaitsForDone(promise, "MainViewManager.doOpen");
+
+                const $element = testWindow.$('.title-wrapper .title');
+                const isDisplayed = $element.is(":visible");
+                expect(isDisplayed).toBeTrue(); // if no file opened, no html title bar bay
+
+            });
+
+            it("should not have a title bar in tauri windows", async function () {
+                if(!Phoenix.browser.isTauri) {
+                    return;
+                }
+                const $element = testWindow.$('.title-wrapper .title');
+
+                const promise = MainViewManager._open(MainViewManager.FIRST_PANE, FileSystem.getFileForPath(testPath + "/test.js"));
+                await awaitsForDone(promise, "MainViewManager.doOpen");
+
+                const isDisplayed = $element.is(":visible");
+                expect(isDisplayed).toBeFalse();
+
             });
         });
 

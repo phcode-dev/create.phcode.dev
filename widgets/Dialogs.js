@@ -34,6 +34,7 @@ define(function (require, exports, module) {
         DialogTemplate    = require("text!htmlContent/dialog-template.html"),
         WorkspaceManager  = require("view/WorkspaceManager"),
         AppInit           = require("utils/AppInit"),
+        DefaultDialogs    = require("widgets/DefaultDialogs"),
         Mustache          = require("thirdparty/mustache/mustache");
 
     /**
@@ -353,12 +354,15 @@ define(function (require, exports, module) {
             //Remove wrapper
             $(".modal-wrapper:last").remove();
         }).one("shown", function () {
-            let $primaryBtn = $dlg.find(".primary:enabled"),
+            let $defaultOption   = $dlg.find(".default-option"),
+                $primaryBtn = $dlg.find(".primary:enabled"),
                 $otherBtn   = $dlg.find(".modal-footer .dialog-button:enabled:eq(0)");
 
             // Set focus to the primary button, to any other button, or to the dialog depending
             // if there are buttons
-            if ($primaryBtn.length) {
+            if ($defaultOption.length) {
+                $defaultOption.focus();
+            } else if ($primaryBtn.length) {
                 $primaryBtn.focus();
             } else if ($otherBtn.length) {
                 $otherBtn.focus();
@@ -401,8 +405,8 @@ define(function (require, exports, module) {
      * @param {string} dlgClass A class name identifier for the dialog. Typically one of DefaultDialogs.*
      * @param {string=} title The title of the dialog. Can contain HTML markup. Defaults to "".
      * @param {string=} message The message to display in the dialog. Can contain HTML markup. Defaults to "".
-     * @param {Array.<{className: string, id: string, text: string}>=} buttons An array of buttons where each button
-     *      has a class, id and text property. The id is used in "data-button-id". Defaults to a single Ok button.
+     * @param {Array.<{className: string, id: string, text: string, tooltip:string}>=} buttons An array of buttons where each button
+     *      has a class, id tooltip, and text property. The id is used in "data-button-id". Defaults to a single Ok button.
      *      Typically className is one of DIALOG_BTN_CLASS_*, id is one of DIALOG_BTN_*
      * @param {boolean=} autoDismiss Whether to automatically dismiss the dialog when one of the buttons
      *      is clicked. Default true. If false, you'll need to manually handle button clicks and the Esc
@@ -419,6 +423,23 @@ define(function (require, exports, module) {
         let template = Mustache.render(DialogTemplate, templateVars);
 
         return showModalDialogUsingTemplate(template, autoDismiss);
+    }
+
+    function showConfirmDialog(title, message, autoDismiss) {
+        const buttons = [
+            { className: DIALOG_BTN_CLASS_NORMAL, id: DIALOG_BTN_CANCEL, text: Strings.CANCEL },
+            { className: DIALOG_BTN_CLASS_PRIMARY, id: DIALOG_BTN_OK, text: Strings.OK }
+        ];
+
+        return showModalDialog(DefaultDialogs.DIALOG_ID_INFO, title, message, buttons, autoDismiss);
+    }
+
+    function showInfoDialog(title, message, autoDismiss) {
+        return showModalDialog(DefaultDialogs.DIALOG_ID_INFO, title, message, null, autoDismiss);
+    }
+
+    function showErrorDialog(title, message, autoDismiss) {
+        return showModalDialog(DefaultDialogs.DIALOG_ID_ERROR, title, message, null, autoDismiss);
     }
 
     /**
@@ -477,6 +498,9 @@ define(function (require, exports, module) {
     exports.DIALOG_BTN_CLASS_LEFT        = DIALOG_BTN_CLASS_LEFT;
 
     exports.showModalDialog              = showModalDialog;
+    exports.showConfirmDialog            = showConfirmDialog;
+    exports.showInfoDialog               = showInfoDialog;
+    exports.showErrorDialog              = showErrorDialog;
     exports.showModalDialogUsingTemplate = showModalDialogUsingTemplate;
     exports.cancelModalDialogIfOpen      = cancelModalDialogIfOpen;
     exports.addLinkTooltips              = addLinkTooltips;

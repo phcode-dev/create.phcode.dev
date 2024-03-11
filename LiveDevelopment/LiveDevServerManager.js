@@ -19,6 +19,8 @@
  *
  */
 
+/*global Phoenix*/
+
 /**
  * LiveDevServerManager Overview:
  *
@@ -39,8 +41,10 @@
  */
 define(function (require, exports, module) {
 
+    const ProjectManager      = require("project/ProjectManager");
 
-    var _serverProviders   = [];
+
+    let _serverProviders   = [];
 
     /**
      * @private
@@ -53,24 +57,33 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Determines which provider can serve a file with a local path.
+     * Determines which provider can serve a file with a local path. If it cant find any, will return
+     * the highest priority live preview server.
      *
      * @param {string} localPath A local path to file being served.
      * @return {?BaseServer} A server no null if no servers can serve the file
      */
     function getServer(localPath) {
-        var provider, server, i;
+        let provider, server, i, highestPriorityServer;
 
         for (i = 0; i < _serverProviders.length; i++) {
             provider = _serverProviders[i];
-            server = provider.create();
+            if(!provider._createdServer ||
+                (provider._createdServer.getProjectRoot() !== ProjectManager.getProjectRoot().fullPath)){
+                provider._createdServer = provider.create();
+            }
+            server = provider._createdServer;
+
+            if(!highestPriorityServer){
+                highestPriorityServer = server;
+            }
 
             if (server.canServe(localPath)) {
                 return server;
             }
         }
 
-        return null;
+        return highestPriorityServer;
     }
 
     /**

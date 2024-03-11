@@ -23,7 +23,7 @@
 /*eslint-env es6*/
 /*eslint no-console: 0*/
 /*eslint strict: ["error", "global"]*/
-/*global jQuery,fs */
+/*global jQuery, Phoenix*/
 
 // TODO: (issue #264) break out the definition of brackets into a separate module from the application controller logic
 
@@ -61,9 +61,12 @@ define(function (require, exports, module) {
     require("thirdparty/CodeMirror/addon/selection/mark-selection");
     require("thirdparty/CodeMirror/keymap/sublime");
 
+    require("utils/EventDispatcher");
     require("worker/WorkerComm");
-    require("utils/PhoenixComm");
     require("utils/ZipUtils");
+    require("NodeConnector");
+    require("command/KeyboardOverlayMode");
+    require("editor/EditorManager");
 
     // Load dependent modules
     const AppInit             = require("utils/AppInit"),
@@ -110,9 +113,6 @@ define(function (require, exports, module) {
      */
     window.NotificationUI = NotificationUI;
 
-
-    const MainViewHTML        = require("text!htmlContent/main-view.html");
-
     // load modules for later use
     require("utils/Global");
     require("editor/CSSInlineEditor");
@@ -125,6 +125,7 @@ define(function (require, exports, module) {
     require("LiveDevelopment/main");
     require("utils/NodeConnection");
     require("utils/NodeDomain");
+    require("utils/NodeUtils");
     require("utils/ColorUtils");
     require("view/ThemeManager");
     require("thirdparty/lodash");
@@ -174,6 +175,7 @@ define(function (require, exports, module) {
     require("features/JumpToDefManager");
     require("features/QuickViewManager");
     require("features/SelectionViewManager");
+    require("features/TaskManager");
     require("features/BeautificationManager");
     require("features/NewFileContentManager");
 
@@ -209,10 +211,6 @@ define(function (require, exports, module) {
     // web workers
     require("worker/IndexingWorker");
     require("worker/ExtensionsWorker");
-
-    // live preview
-    require("LiveDevelopment/Servers/FileServer");
-    require("LiveDevelopment/Servers/UserServer");
 
     PerfUtils.addMeasurement("brackets module dependencies resolved");
 
@@ -267,17 +265,20 @@ define(function (require, exports, module) {
             LanguageManager: require("language/LanguageManager"),
             LiveDevMultiBrowser: require("LiveDevelopment/LiveDevMultiBrowser"),
             LiveDevServerManager: require("LiveDevelopment/LiveDevServerManager"),
+            LiveDevProtocol: require("LiveDevelopment/MultiBrowserImpl/protocol/LiveDevProtocol"),
             MainViewFactory: require("view/MainViewFactory"),
             MainViewManager: require("view/MainViewManager"),
             Menus: require("command/Menus"),
             MultiRangeInlineEditor: require("editor/MultiRangeInlineEditor").MultiRangeInlineEditor,
             NativeApp: require("utils/NativeApp"),
             PerfUtils: require("utils/PerfUtils"),
-            PhoenixComm: require("utils/PhoenixComm"),
             PreferencesManager: require("preferences/PreferencesManager"),
             ProjectManager: require("project/ProjectManager"),
             QuickViewManager: require("features/QuickViewManager"),
             SelectionViewManager: require("features/SelectionViewManager"),
+            TaskManager: require("features/TaskManager"),
+            StatusBar: require("widgets/StatusBar"),
+            ThemeManager: require("view/ThemeManager"),
             WorkspaceManager: require("view/WorkspaceManager"),
             SearchResultsView: require("search/SearchResultsView"),
             ScrollTrackMarkers: require("search/ScrollTrackMarkers"),
@@ -307,6 +308,7 @@ define(function (require, exports, module) {
     function _startupBrackets() {
         // Load all extensions. This promise will complete even if one or more
         // extensions fail to load.
+        console.log("Starting Brackets...");
         const extensionPathOverride = params.get("extensions");  // used by unit tests
         const extensionLoaderPromise = ExtensionLoader.init(extensionPathOverride ? extensionPathOverride.split(",") : null);
 
@@ -406,11 +408,7 @@ define(function (require, exports, module) {
 
         // Load default languages and preferences
         Async.waitForAll([LanguageManager.ready, PreferencesManager.ready]).always(function () {
-            if(window._phoenixfsAppDirsCreatePromise){
-                window._phoenixfsAppDirsCreatePromise.finally(_startupBrackets);
-            } else {
-                _startupBrackets();
-            }
+            window._phoenixfsAppDirsCreatePromise.finally(_startupBrackets);
         });
     }
 
@@ -419,30 +417,21 @@ define(function (require, exports, module) {
      */
     function _beforeHTMLReady() {
         // Add the platform (mac, win or linux) to the body tag so we can have platform-specific CSS rules
-        $("body").addClass("platform-" + brackets.platform);
+        const $body = $("body");
+        $body.addClass("platform-" + brackets.platform);
+        if(Phoenix.browser.isTauri){
+            $body.addClass("tauri");
+        }
 
         // Browser-hosted version may also have different CSS (e.g. since '#titlebar' is shown)
         if (brackets.inBrowser) {
-            $("body").addClass("in-browser");
+            $body.addClass("in-browser");
         } else {
-            $("body").addClass("in-appshell");
+            $body.addClass("in-appshell");
         }
 
-        // Use HTML Menus
-        // (issue #5310) workaround for bootstrap dropdown: prevent the menu item to grab
-        // the focus -- override jquery focus implementation for top-level menu items
-        (function () {
-            const defaultFocus = $.fn.focus;
-            $.fn.focus = function () {
-                if (!this.hasClass("dropdown-toggle")) {
-                    return defaultFocus.apply(this, arguments);
-                }
-            };
-        }());
-
-
-        // Localize MainViewHTML and inject into <BODY> tag
-        $("body").append(Mustache.render(MainViewHTML, { shouldAddAA: (brackets.platform === "mac"), Strings: Strings }));
+        $('#toolbar-extension-manager').prop('title', Strings.EXTENSION_MANAGER_TITLE);
+        $('#update-notification').prop('title', Strings.UPDATE_NOTIFICATION_TOOLTIP);
 
         // Update title
         $("title").text(brackets.config.app_title);
@@ -524,13 +513,8 @@ define(function (require, exports, module) {
         };
     }
 
-    // Wait for view state to load.
-    const viewStateTimer = PerfUtils.markStart("User viewstate loading");
-    PreferencesManager._smUserScopeLoading.always(function () {
-        PerfUtils.addMeasurement(viewStateTimer);
-        // Dispatch htmlReady event
-        _beforeHTMLReady();
-        AppInit._dispatchReady(AppInit.HTML_READY);
-        $(window.document).ready(_onReady);
-    });
+    // Dispatch htmlReady event
+    _beforeHTMLReady();
+    AppInit._dispatchReady(AppInit.HTML_READY);
+    $(window.document).ready(_onReady);
 });

@@ -32,9 +32,9 @@
 
     class CustomBugSnagError extends Error {
         constructor(message, err){
-            super(message + (err.message || ""));
-            this.name = (err.constructor && err.constructor.name) || this.constructor.name;
-            this.stack= message +" : "+ err.stack;
+            super(message + ((err && err.message) || ""));
+            this.name = (err && err.constructor && err.constructor.name) || this.constructor.name;
+            this.stack= message +" : "+ (err && err.stack) || "stack not available";
         }
     }
 
@@ -52,6 +52,17 @@
                 Bugsnag.notify(message?
                     new CustomBugSnagError(message, error)
                     :error);
+            }
+        },
+        /**
+         * By default all uncaught exceptions and promise rejections are sent to logger utility. But in some cases
+         * you may want to sent handled errors too if it is critical. use this function to report those
+         * @param {Error} error
+         * @param {string} [message] optional message
+         */
+        reportErrorMessage: function (message) {
+            if(isBugsnagEnabled) {
+                Bugsnag.notify(new CustomBugSnagError(message));
             }
         },
 
@@ -138,20 +149,20 @@
         logger.loggingOptions.LOCAL_STORAGE_KEYS.LOG_LIVE_PREVIEW);
 
     function _shouldDiscardError(errors = []) {
-        if(!window.fsServerUrl || !window.Phoenix || !window.Phoenix.VFS){
+        if(!window.Phoenix || !window.Phoenix.VFS){
             return false;
         }
         let fileURL, extensionName, userFsURLFound = false,
-            userExtensionsURL = window.fsServerUrl.slice(0, -1) + window.Phoenix.VFS.getUserExtensionDir() + "/";
+            userExtensionsFolderURL = window.Phoenix.VFS.getVirtualServingURLForPath(window.Phoenix.VFS.getUserExtensionDir()+"/");
 
         // errors with stacks originating from any folder or files from the user file system are not logged for privacy
         for(let error of errors){
             if(error.stacktrace && error.stacktrace[0]) {
                 for(let stack of error.stacktrace){
                     fileURL = stack.file || "";
-                    if(fileURL.startsWith(userExtensionsURL)) {
+                    if(fileURL.startsWith(userExtensionsFolderURL)) {
                         // an extension installed from extension store has error. we dont log, but raise metric
-                        extensionName = fileURL.replace(userExtensionsURL, "");
+                        extensionName = fileURL.replace(userExtensionsFolderURL, "");
                         extensionName = extensionName.split("/")[0];
                         let supportStatus = "Y";
                         if(!Phoenix.isSupportedBrowser){
@@ -165,7 +176,7 @@
                             `Extension Error for ${extensionName} of type ${error.type} class ${error.errorClass}`);
                         return true;
                     }
-                    if(fileURL.startsWith(window.fsServerUrl)) {
+                    if(window.Phoenix.VFS.getPathForVirtualServingURL(fileURL)) {
                         userFsURLFound = true;
                     }
                 }
@@ -249,6 +260,8 @@
             browser = 'operaLegacy';
         } else if(Phoenix.browser.desktop.isSafari){
             browser = 'safari';
+        } else if(Phoenix.browser.desktop.isWebKit){
+            browser = 'webkit';
         }
         context = `${context}-${Phoenix.platform}-${browser}`;
     }
@@ -280,20 +293,7 @@
             firstMinuteElapsed = true;
             errorsSentThisMinute = 0;
         }, MAX_ERR_SENT_RESET_INTERVAL);
-        if(window.cacheClearError){
-            logger.reportError(window.cacheClearError);
-        }
     } else {
         console.warn("Logging to Bugsnag is disabled as current environment is localhost.");
-
-        window.onerror = function (msg, url, line, ...err) {
-            console.error("Caught Critical error from: " + url + ":" + line + " message: " + msg, ...err);
-            return true; // same as preventDefault
-        };
-
-        window.addEventListener("unhandledrejection", function (event){
-            console.error("Caught unhandledrejection from: ", event);
-            return true; // same as preventDefault
-        });
     }
 }());

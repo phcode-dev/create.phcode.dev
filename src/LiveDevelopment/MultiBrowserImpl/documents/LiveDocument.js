@@ -66,7 +66,7 @@ define(function (require, exports, module) {
 
         EditorManager.on(`activeEditorChange.LiveDocument-${this.doc.file.fullPath}`, this._onActiveEditorChange);
 
-        PreferencesManager.stateManager.getPreference("livedev.highlight")
+        PreferencesManager.stateManager.getPreference("livedevHighlight")
             .on(`change.LiveDocument-${this.doc.file.fullPath}`, this._onHighlightPrefChange);
 
         // Redraw highlights when window gets focus. This ensures that the highlights
@@ -89,7 +89,7 @@ define(function (require, exports, module) {
         this._clearErrorDisplay();
         this._detachFromEditor();
         EditorManager.off(`activeEditorChange.LiveDocument-${this.doc.file.fullPath}`);
-        PreferencesManager.stateManager.getPreference("livedev.highlight")
+        PreferencesManager.stateManager.getPreference("livedevHighlight")
             .off(`change.LiveDocument-${this.doc.file.fullPath}`);
     };
 
@@ -146,10 +146,7 @@ define(function (require, exports, module) {
      * @param {?Editor} oldActive
      */
     LiveDocument.prototype._onActiveEditorChange = function (event, newActive, oldActive) {
-
-        //FIXME: #7 prevents the page to be reloaded when editing JS files.
-        //       Temporarily disabling this code to make JS editing work.
-//      this._detachFromEditor();
+        this._detachFromEditor();
 
         if (newActive && newActive.document.file.fullPath === this.doc.file.fullPath) {
             this._attachToEditor(newActive);
@@ -179,7 +176,6 @@ define(function (require, exports, module) {
         if (this.editor) {
             this.hideHighlight();
             this.editor.off("cursorActivity", this._onCursorActivity);
-            this.editor = null;
         }
     };
 
@@ -266,7 +262,7 @@ define(function (require, exports, module) {
      * @return {boolean}
      */
     LiveDocument.prototype.isHighlightEnabled = function () {
-        return PreferencesManager.getViewState("livedev.highlight");
+        return PreferencesManager.getViewState("livedevHighlight");
     };
 
     /**

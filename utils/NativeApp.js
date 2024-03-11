@@ -34,7 +34,7 @@ define(function (require, exports, module) {
      * Map an fs error code to a FileError.
      */
     function _browserErrToFileError(err) {
-        if (err === brackets.fs.ERR_NOT_FOUND) {
+        if (err === brackets.fs.ERR_CODES.NOT_FOUND) {
             return FileSystemError.NOT_FOUND;
         }
 
@@ -105,10 +105,13 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Opens a URL in the system default browser
+     * Opens a URL in the system default browser.
+     * @param {string} url
+     * @param {string?} tabIdentifier - An optional tab identifier can be set to group the tabs. Maps to target option
+     *              in browser. Doesn't do anything in tauri.
      */
-    function openURLInDefaultBrowser(url) {
-        brackets.app.openURLInDefaultBrowser(url);
+    function openURLInDefaultBrowser(url, tabIdentifier) {
+        return brackets.app.openURLInDefaultBrowser(url, tabIdentifier);
     }
 
     function getApplicationSupportDirectory() {

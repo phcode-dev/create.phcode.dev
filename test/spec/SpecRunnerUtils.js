@@ -19,7 +19,7 @@
  *
  */
 
-/*global jsPromise, jasmine, expect, beforeEach, awaitsFor,awaitsForDone, spyOn, KeyboardEvent, waits, awaits */
+/*global Phoenix, jsPromise, jasmine, expect, awaitsFor,awaitsForDone, spyOn, awaits */
 
 define(function (require, exports, module) {
 
@@ -27,6 +27,7 @@ define(function (require, exports, module) {
     var Commands            = require("command/Commands"),
         FileUtils           = require("file/FileUtils"),
         Async               = require("utils/Async"),
+        Dialogs             = require("widgets/Dialogs"),
         DocumentManager     = require("document/DocumentManager"),
         Editor              = require("editor/Editor").Editor,
         EditorManager       = require("editor/EditorManager"),
@@ -87,6 +88,10 @@ define(function (require, exports, module) {
             }
         });
         return result.promise();
+    }
+
+    async function deletePathAsync(fullPath, silent) {
+        return jsPromise(deletePath(fullPath, silent));
     }
 
     /**
@@ -175,7 +180,7 @@ define(function (require, exports, module) {
                 })
                 .catch((err)=>{
                     console.error("awaitsForDone failed when expecting to pass for: " + msg, err);
-                    reject(err);
+                    reject(new Error("awaitsForDone failed when expecting to pass for: " + msg + err));
                 });
         });
     };
@@ -212,10 +217,16 @@ define(function (require, exports, module) {
     }
 
     function getTestRoot() {
+        if(Phoenix.browser.isTauri){
+            return Phoenix.app.getApplicationSupportDirectory() + "test";
+        }
         return '/test';
     }
 
-    function getTestPath(path) {
+    function getTestPath(path = '') {
+        if(path && !path.startsWith("/")){
+            throw new Error("getTestPath path should start with a /");
+        }
         return getTestRoot() + path;
     }
 
@@ -225,6 +236,22 @@ define(function (require, exports, module) {
      */
     function getTempDirectory() {
         return getTestPath("/temp");
+    }
+
+    /**
+     * creates an editable temp dir with copied contents from the test folder specified
+     * @param pathInTestDir
+     * @return {*}
+     */
+    async function getTempTestDirectory(pathInTestDir) {
+        if(!pathInTestDir){
+            throw new Error("getTempTestDirectory should be called with a test folder in test dir");
+        }
+        const testDir = getTestPath(pathInTestDir);
+        const testTempDir = getTestPath("/tempTest"+pathInTestDir);
+        await awaitsForDone(deletePath(testTempDir, true));
+        await awaitsForDone(copyPath(testDir, testTempDir));
+        return testTempDir;
     }
 
     /**
@@ -312,7 +339,11 @@ define(function (require, exports, module) {
         path = path.split("/");
         path = path.slice(0, path.length - 2);
         path.push("src");
-        return path.join("/");
+        let url = window.location.origin + path.join("/");
+        if (!url.endsWith("/")){
+            url = url + "/";
+        }
+        return url;
     }
 
     /**
@@ -492,7 +523,7 @@ define(function (require, exports, module) {
      * @param {string} buttonId  One of the Dialogs.DIALOG_BTN_* symbolic constants.
      * @param {boolean=} enableFirst  If true, then enable the button before clicking.
      */
-    async function clickDialogButton(buttonId, enableFirst) {
+    async function clickDialogButton(buttonId = Dialogs.DIALOG_BTN_OK, enableFirst = false) {
         // Make sure there's one and only one dialog open
         var $dlg = _testWindow.$(".modal.instance"),
             promise = $dlg.data("promise");
@@ -515,6 +546,19 @@ define(function (require, exports, module) {
         await awaitsForDone(promise);
     }
 
+    async function waitForModalDialog(timeout=2000) {
+        // Make sure there's one and only one dialog open
+        await awaitsFor(()=>{
+            let $dlg = _testWindow.$(".modal.instance");
+            return $dlg.length >= 1;
+        }, timeout);
+    }
+
+
+    function _isBracketsDoneLoading() {
+        return _testWindow && _testWindow.brackets && _testWindow.brackets.test && _testWindow.brackets.test.doneLoading;
+    }
+
     function _setupTestWindow() {
         // Displays the primary console messages from the test window in the
         // test runner's console as well.
@@ -523,19 +567,28 @@ define(function (require, exports, module) {
             _testWindow.console[method] = function () {
                 var log = ["[testWindow] "].concat(Array.prototype.slice.call(arguments, 0));
                 console[method].apply(console, log);
+                if(!_testWindow){
+                    return;
+                }
                 originalMethod.apply(_testWindow.console, arguments);
             };
         });
 
         _testWindow.isBracketsTestWindow = true;
+        _testWindow.isBracketsTestWindowSetup = true;
 
         _testWindow.executeCommand = function executeCommand(cmd, args) {
             return _testWindow.brackets.test.CommandManager.execute(cmd, args);
         };
 
         _testWindow.closeAllFiles = async function closeAllFiles() {
-            let promise = _testWindow.executeCommand(_testWindow.brackets.test.Commands.FILE_CLOSE_ALL);
-
+            if(!_testWindow.executeCommand) {
+                return;
+            }
+            let promise = _testWindow.executeCommand(_testWindow.brackets.test.Commands.FILE_CLOSE_ALL, {
+                _forceClose: true,
+                PaneId: _testWindow.brackets.test.MainViewManager.ALL_PANES
+            });
             _testWindow.brackets.test.Dialogs.cancelModalDialogIfOpen(
                 _testWindow.brackets.test.DefaultDialogs.DIALOG_ID_SAVE_CLOSE,
                 _testWindow.brackets.test.DefaultDialogs.DIALOG_BTN_DONTSAVE
@@ -545,24 +598,30 @@ define(function (require, exports, module) {
         };
     }
 
-    async function createTestWindowAndRun(options) {
-        // Position popup windows in the lower right so they're out of the way
-        let testWindowWid = 1000,
-            testWindowHt  =  700,
-            testWindowX   = window.screen.availWidth - testWindowWid,
-            testWindowY   = window.screen.availHeight - testWindowHt,
-            optionsStr    = "left=" + testWindowX + ",top=" + testWindowY +
-                ",width=" + testWindowWid + ",height=" + testWindowHt;
+    async function waitForBracketsDoneLoading() {
+        // FIXME (issue #249): Need an event or something a little more reliable...
+        await awaitsFor(
+            _isBracketsDoneLoading,
+            "brackets.test.doneLoading",
+            60000
+        );
+        console.log("test window loaded");
+    }
 
+    // the phoenix test window is only created once, it should be reused for the full suite run.
+    // subsequent calls to this function will only return the existing test window. This is to prevent
+    // browser hangs that was quite frequent as we created and dropped iframes in the DOM.
+    async function createTestWindowAndRun(options={
+        forceReload: false,
+        useWindowInsteadOfIframe: false // if this is set,
+    }) {
         let params = new UrlParams();
-
-        // setup extension loading in the test window
-        params.put("extensions", _doLoadExtensions ?
-            "" :// TODO: change this to dev,user for loading vfs extension tests
-            "");
 
         // disable loading of sample project
         params.put("skipSampleProjectLoad", true);
+        if(window._getPlatformOverride()){
+            params.put("platform", window._getPlatformOverride());
+        }
 
         // disable initial dialog for live development
         params.put("skipLiveDevelopmentInfo", true);
@@ -573,13 +632,7 @@ define(function (require, exports, module) {
         if (options) {
             // option to set the params
             if (options.hasOwnProperty("params")) {
-                var paramObject = options.params || {};
-                var obj;
-                for (obj in paramObject) {
-                    if (paramObject.hasOwnProperty(obj)) {
-                        params.put(obj, paramObject[obj]);
-                    }
-                }
+                throw new Error("unexpected params object on create test window, not supported!");
             }
 
             // option to launch test window with either native or HTML menus
@@ -589,24 +642,45 @@ define(function (require, exports, module) {
         }
 
         let _testWindowURL = getBracketsSourceRoot() + "?" + params.toString();
-        if(!_testWindow){
-            _testWindow = window.open(_testWindowURL, "_blank", optionsStr);
-        } else{
-            _testWindow.brackets = null;
-            _testWindow.location.href = 'about:blank';
-            _testWindow.location.href = _testWindowURL;
+        if(_testWindow &&(
+            options.forceReload ||
+            (_testWindow.isActualWindow && !options.useWindowInsteadOfIframe)
+        )) {
+            const urlParams = new URLSearchParams(window.location.search || "");
+            if(urlParams.get('category') === 'integration'){
+                const errorString = "Test config error!!\nTests with category `integration` are not" +
+                    " supposed to use `forceReload` when calling `SpecRunnerUtils.createTestWindowAndRun`" +
+                    " This will severally impact test run times for modern phcode tests.\nYou should use" +
+                    " `LegacyInteg` category in such cases!!!";
+                console.error(errorString);
+                alert(errorString);
+            }
+            await closeTestWindow(true);
         }
 
-        // FIXME (issue #249): Need an event or something a little more reliable...
-        await awaitsFor(
-            function isBracketsDoneLoading() {
-                return _testWindow.brackets && _testWindow.brackets.test && _testWindow.brackets.test.doneLoading;
-            },
-            "brackets.test.doneLoading",
-            60000
-        );
+        if(!_testWindow){
+            if(options.useWindowInsteadOfIframe) {
+                _testWindow = window.open(_testWindowURL, "integTestWindow", "width=1500,height=1024");
+                _testWindow.isActualWindow = true;
+            } else {
+                const testIframe = window.openIframeRunner(_testWindowURL);
+                _testWindow = testIframe.contentWindow;
+            }
+        } else if(!_testWindow.brackets || !_testWindow.executeCommand){
+            _testWindow.location.href = 'about:blank';
+            _testWindow.location.href = _testWindowURL;
+        } else {
+            if(!_testWindow.closeAllFiles){
+                _setupTestWindow();
+            }
+            await _testWindow.closeAllFiles();
+        }
 
-        _setupTestWindow();
+        await waitForBracketsDoneLoading();
+
+        if(!_testWindow.isBracketsTestWindowSetup) {
+            _setupTestWindow();
+        }
         return _testWindow;
     }
     async function reloadWindow() {
@@ -627,9 +701,7 @@ define(function (require, exports, module) {
 
         // FIXME (issue #249): Need an event or something a little more reliable...
         await awaitsFor(
-            function isBracketsDoneLoading() {
-                return _testWindow.brackets && _testWindow.brackets.test && _testWindow.brackets.test.doneLoading;
-            },
+            _isBracketsDoneLoading,
             "brackets.test.doneLoading",
             60000,
             100
@@ -639,22 +711,54 @@ define(function (require, exports, module) {
         return _testWindow;
     }
 
-    async function closeTestWindow() {
+    async function closeTestWindow(force, blankTestWindow) {
         //we need to mark the documents as not dirty before we close
         //or the window will stay open prompting to save
-        let openDocs = _testWindow.brackets.test.DocumentManager.getAllOpenDocuments();
-        openDocs.forEach(function resetDoc(doc) {
-            if (doc.isDirty) {
-                //just refresh it back to it's current text. This will mark it
-                //clean to save
-                doc.refreshText(doc.getText(), doc.diskTimestamp);
+        if(!_testWindow){
+            return;
+        }
+        if(_isBracketsDoneLoading()) {
+            if(!_testWindow.closeAllFiles){
+                _setupTestWindow();
             }
-        });
-        _testWindow.executeCommand = null;
-        _testWindow.location.href = 'about:blank';
-        _testWindow.brackets.test.doneLoading = false;
-        // debug-only to see testWindow state before closing
-        // waits(1000);
+            await _testWindow.closeAllFiles();
+            if(!force){
+                await jsPromise(_testWindow.brackets.test.CommandManager.execute(Commands.CMD_SPLITVIEW_NONE));
+                _testWindow.brackets.test.MainViewManager._closeAll(_testWindow.brackets.test.MainViewManager.ALL_PANES);
+                await window.Phoenix.VFS.ensureExistsDirAsync("/test/parked");
+                await loadProjectInTestWindow("/test/parked");
+            }
+        }
+
+        if(force) {
+            _testWindow.executeCommand = null;
+            await awaits(3000); // UTS will crap without these time waits, esp in chromium. Browser freezes
+            if(_testWindow.brackets) {
+                await awaitsFor(function () {
+                    return _testWindow.brackets.test.FindInFiles.isProjectIndexingComplete();
+                }, "Indexing complete", 10000);
+                for(let key of Object.keys(_testWindow.brackets.test)){
+                    delete _testWindow.brackets.test[key];
+                }
+                delete _testWindow.brackets.test;
+                delete _testWindow.brackets;
+                delete _testWindow.appshell;
+                delete _testWindow.fs;
+
+            }
+            _testWindow.PhNodeEngine && _testWindow.PhNodeEngine.terminateNode();
+            if(blankTestWindow){
+                _testWindow.location.href = "about:blank";
+                await awaits(2000); // UTS will crap without these time waits, esp in chromium. Browser freezes
+            }
+            if(_testWindow.isActualWindow){
+                _testWindow.close();
+            } else {
+                window.closeIframeRunner();
+            }
+            _testWindow = null;
+            await awaits(2000); // UTS will crap without these time waits, esp in chromium. Browser freezes
+        }
     }
 
 
@@ -809,6 +913,41 @@ define(function (require, exports, module) {
     }
 
     /**
+     * Opens full file paths in the test window editor
+     * @param {!(Array.<string>|string)} paths absolute file path(s) to open
+     * @return {!$.Promise} A promise resolved with a mapping of project-relative path
+     *  keys to a corresponding Document
+     */
+    function openFiles(paths) {
+        var result = new $.Deferred(),
+            docs = {},
+            FileViewController = _testWindow.brackets.test.FileViewController,
+            DocumentManager = _testWindow.brackets.test.DocumentManager;
+
+        Async.doSequentially(paths, function (path, i) {
+            var one = new $.Deferred();
+
+            FileViewController.openFileAndAddToWorkingSet(path).done(function (file) {
+                docs[i] = DocumentManager.getOpenDocumentForPath(file.fullPath);
+                one.resolve();
+            }).fail(function (err) {
+                one.reject(err);
+            });
+
+            return one.promise();
+        }, false).done(function () {
+            result.resolve(docs);
+        }).fail(function (err) {
+            result.reject(err);
+        }).always(function () {
+            docs = null;
+            FileViewController = null;
+        });
+
+        return result.promise();
+    }
+
+    /**
      * Create or overwrite a text file
      * @param {!string} path Path for a file to be created/overwritten
      * @param {!string} text Text content for the new file
@@ -832,6 +971,10 @@ define(function (require, exports, module) {
         });
 
         return deferred.promise();
+    }
+
+    function createTextFileAsync(path, text) {
+        return jsPromise(createTextFile(path, text, _getFileSystem()));
     }
 
     /**
@@ -1203,7 +1346,11 @@ define(function (require, exports, module) {
         return 0;
     }
 
-    function pathExists(pathToCheck, isFolder = true) {
+    async function ensureExistsDirAsync(pathToExist) {
+        await window.Phoenix.VFS.ensureExistsDirAsync(pathToExist);
+    }
+
+    async function pathExists(pathToCheck, isFolder = true) {
         let entry = isFolder ? FileSystem.getDirectoryForPath(pathToCheck)
             : FileSystem.getFileForPath(pathToCheck);
         return entry.existsAsync(pathToCheck);
@@ -1257,6 +1404,7 @@ define(function (require, exports, module) {
     exports.getTestRoot                     = getTestRoot;
     exports.getTestPath                     = getTestPath;
     exports.getTempDirectory                = getTempDirectory;
+    exports.getTempTestDirectory            = getTempTestDirectory;
     exports.createTempDirectory             = createTempDirectory;
     exports.getBracketsSourceRoot           = getBracketsSourceRoot;
     exports.makeAbsolute                    = makeAbsolute;
@@ -1275,15 +1423,21 @@ define(function (require, exports, module) {
     exports.destroyMockEditor               = destroyMockEditor;
     exports.loadProjectInTestWindow         = loadProjectInTestWindow;
     exports.openProjectFiles                = openProjectFiles;
+    exports.openFiles                       = openFiles;
     exports.toggleQuickEditAtOffset         = toggleQuickEditAtOffset;
     exports.createTextFile                  = createTextFile;
+    exports.createTextFileAsync             = createTextFileAsync;
     exports.copyDirectoryEntry              = copyDirectoryEntry;
     exports.copyFileEntry                   = copyFileEntry;
     exports.copyPath                        = copyPath;
     exports.deletePath                      = deletePath;
+    exports.deletePathAsync                 = deletePathAsync;
     exports.pathExists                      = pathExists;
+    exports.ensureExistsDirAsync            = ensureExistsDirAsync;
     exports.waitTillPathExists              = waitTillPathExists;
     exports.waitTillPathNotExists           = waitTillPathNotExists;
+    exports.waitForModalDialog              = waitForModalDialog;
+    exports.waitForBracketsDoneLoading      = waitForBracketsDoneLoading;
     exports.getTestWindow                   = getTestWindow;
     exports.simulateKeyEvent                = simulateKeyEvent;
     exports.setLoadExtensionsInTestWindow   = setLoadExtensionsInTestWindow;

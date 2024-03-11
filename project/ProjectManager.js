@@ -44,10 +44,10 @@ define(function (require, exports, module) {
 
     require("utils/Global");
 
-    var _ = require("thirdparty/lodash");
+    const _ = require("thirdparty/lodash");
 
     // Load dependent modules
-    let AppInit             = require("utils/AppInit"),
+    const AppInit             = require("utils/AppInit"),
         Async               = require("utils/Async"),
         PreferencesDialogs  = require("preferences/PreferencesDialogs"),
         PreferencesManager  = require("preferences/PreferencesManager"),
@@ -92,12 +92,15 @@ define(function (require, exports, module) {
 
     EventDispatcher.setLeakThresholdForEvent(EVENT_PROJECT_OPEN, 25);
 
+    const CLIPBOARD_SYNC_KEY = "phoenix.clipboard";
+
     /**
      * @private
      * Filename to use for project settings files.
      * @type {string}
      */
-    var SETTINGS_FILENAME = "." + PreferencesManager.SETTINGS_FILENAME;
+    const SETTINGS_FILENAME = "." + PreferencesManager.SETTINGS_FILENAME,
+        SETTINGS_FILENAME_BRACKETS = "." + PreferencesManager.SETTINGS_FILENAME_BRACKETS;
 
     /**
      * Name of the preferences for sorting directories first
@@ -515,17 +518,6 @@ define(function (require, exports, module) {
     }
 
     /**
-     * @private
-     *
-     * Creates a context object for doing project view state lookups.
-     */
-    function _getProjectViewStateContext() {
-        return { location: { scope: "user",
-            layer: "project",
-            layerID: model.projectRoot.fullPath } };
-    }
-
-    /**
      * Returns the encoded Base URL of the currently loaded project, or empty string if no project
      * is open (during startup, or running outside of app shell).
      * @return {String}
@@ -539,11 +531,9 @@ define(function (require, exports, module) {
      * @param {String}
      */
     function setBaseUrl(projectBaseUrl) {
-        var context = _getProjectViewStateContext();
-
         projectBaseUrl = model.setBaseUrl(projectBaseUrl);
 
-        PreferencesManager.setViewState("project.baseUrl", projectBaseUrl, context);
+        PreferencesManager.setViewState("project.baseUrl", projectBaseUrl, PreferencesManager.STATE_PROJECT_CONTEXT);
     }
 
     /**
@@ -606,7 +596,7 @@ define(function (require, exports, module) {
         var d = new $.Deferred();
         model.setProjectRoot(rootEntry).then(function () {
             d.resolve();
-            model.reopenNodes(PreferencesManager.getViewState("project.treeState", _getProjectViewStateContext()));
+            model.reopenNodes(PreferencesManager.getViewState("project.treeState", PreferencesManager.STATE_PROJECT_CONTEXT));
         });
         return d.promise();
     }
@@ -626,11 +616,10 @@ define(function (require, exports, module) {
      * Save tree state.
      */
     _saveTreeState = function () {
-        var context = _getProjectViewStateContext(),
-            openNodes = model.getOpenNodes();
+        const openNodes = model.getOpenNodes();
 
         // Store the open nodes by their full path and persist to storage
-        PreferencesManager.setViewState("project.treeState", openNodes, context);
+        PreferencesManager.setViewState("project.treeState", openNodes, PreferencesManager.STATE_PROJECT_CONTEXT);
     };
 
     /**
@@ -754,7 +743,7 @@ define(function (require, exports, module) {
     }
 
     function getExploreProjectPath() {
-        return `${getLocalProjectsPath()}explore`;
+        return `${getLocalProjectsPath()}explore/`;
     }
 
     /**
@@ -762,7 +751,7 @@ define(function (require, exports, module) {
      * @returns {string}
      */
     function getLocalProjectsPath() {
-        return Phoenix.VFS.getLocalDir();
+        return Phoenix.VFS.getUserProjectsDirectory();
     }
 
     /**
@@ -855,21 +844,77 @@ define(function (require, exports, module) {
         return updateWelcomeProjectPath(PreferencesManager.getViewState("projectPath"));
     }
 
+    async function _dirExists(fullPath) {
+        try {
+            const {entry} = await FileSystem.resolveAsync(fullPath);
+            return entry.isDirectory;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function _safeCheckFolder(absOrRelativePath, relativeToDir=null) {
+        try{
+            let folderToOpen;
+            if(!relativeToDir){
+                folderToOpen = Phoenix.VFS.getTauriVirtualPath(absOrRelativePath);
+                const dirExists = await _dirExists(folderToOpen);
+                if(dirExists){
+                    return folderToOpen;
+                }
+            } else {
+                folderToOpen = window.path.join(Phoenix.VFS.getTauriVirtualPath(relativeToDir), absOrRelativePath);
+                const dirExists = await _dirExists(folderToOpen);
+                if(dirExists){
+                    return folderToOpen;
+                }
+            }
+        } catch (e) {
+            console.warn("error opening folder at path", absOrRelativePath, relativeToDir);
+        }
+        return null;
+    }
+
+    async function _getStartupProjectFromCLIArgs() {
+        const cliArgs= await Phoenix.app.getCommandLineArgs();
+        const args = cliArgs && cliArgs.args,
+            cwd = cliArgs && cliArgs.cwd;
+        if(!args || args.length <= 1){ // the second arg is the folder we have to open
+            return null;
+        }
+        try{
+            let folderToOpen = args[1];
+            folderToOpen = await _safeCheckFolder(args[1]);
+            if(folderToOpen){
+                Metrics.countEvent(Metrics.EVENT_TYPE.PLATFORM, 'openWith', "folder");
+                return folderToOpen;
+            }
+            folderToOpen = await _safeCheckFolder(args[1], cwd);
+            if(folderToOpen){
+                Metrics.countEvent(Metrics.EVENT_TYPE.PLATFORM, 'openWith', "folder");
+            }
+            return folderToOpen;
+        } catch (e) {
+            console.error("Error getting startupProjectPath from CLI args", e);
+        }
+        return null;
+    }
+
     /**
      * Initial project path is stored in prefs, which defaults to the welcome project on
      * first launch.
      */
     async function getStartupProjectPath() {
-        return new Promise((resolve)=>{
-            let startupProjectPath = updateWelcomeProjectPath(PreferencesManager.getViewState("projectPath"));
-            FileSystem.getDirectoryForPath(startupProjectPath).exists((err, exists)=>{
-                if(exists){
-                    resolve(startupProjectPath);
-                } else {
-                    resolve(getWelcomeProjectPath());
-                }
-            });
-        });
+        let startupProjectPath = await _getStartupProjectFromCLIArgs();
+        if(startupProjectPath){
+            return startupProjectPath;
+        }
+        startupProjectPath = updateWelcomeProjectPath(PreferencesManager.getViewState("projectPath"));
+        const dirExists = await _dirExists(startupProjectPath);
+        if(dirExists){
+            return startupProjectPath;
+        }
+        return getWelcomeProjectPath();
     }
 
     /**
@@ -927,18 +972,95 @@ define(function (require, exports, module) {
         return result.promise();
     }
 
+    const PREF_OK = "prefOK",
+        PREF_JSON_ERR = "jsonERR",
+        PREF_NO_FILE = "noFile";
+    function _validateProjectPreferencesFile(filePath) {
+        return new Promise((resolve)=>{
+            const file   = FileSystem.getFileForPath(filePath);
+            FileUtils.readAsText(file)
+                .done(function (text) {
+                    try {
+                        if (text) {
+                            JSON.parse(text);
+                        }
+                        resolve(PREF_OK);
+                    } catch (err) {
+                        resolve(PREF_JSON_ERR);
+                    }
+                })
+                .fail(()=>{
+                    resolve(PREF_NO_FILE);
+                });
+        });
+    }
+
     /**
      * @private
      * Reloads the project preferences.
      */
-    function _reloadProjectPreferencesScope() {
-        var root = getProjectRoot();
+    async function _reloadProjectPreferencesScope() {
+        const root = getProjectRoot();
         if (root) {
+            const phoenixPrefFile = root.fullPath + SETTINGS_FILENAME,
+                bracketsPrefFile = root.fullPath + SETTINGS_FILENAME_BRACKETS;
+            const statusPhoenix = await _validateProjectPreferencesFile(phoenixPrefFile);
+            const statusBrackets = await _validateProjectPreferencesFile(bracketsPrefFile);
+            let prefFileToUse = phoenixPrefFile;
+            if(statusPhoenix === PREF_NO_FILE && statusBrackets !== PREF_NO_FILE) {
+                prefFileToUse = bracketsPrefFile;
+            }
+            _alertBrokenPreferenceFile();
             // Alias the "project" Scope to the path Scope for the project-level settings file
-            PreferencesManager._setProjectSettingsFile(root.fullPath + SETTINGS_FILENAME);
+            PreferencesManager._setProjectSettingsFile(prefFileToUse);
         } else {
             PreferencesManager._setProjectSettingsFile();
         }
+    }
+
+    let alertIsShown = false;
+    async function _alertBrokenPreferenceFile() {
+        if(alertIsShown){
+            return;
+        }
+        //Verify that the project preferences file (.phcode.json or brackets.json) is NOT corrupted.
+        //If corrupted, display the error message and open the file in editor for the user to edit.
+        const root = getProjectRoot();
+        const phoenixPrefFile = root.fullPath + SETTINGS_FILENAME,
+            bracketsPrefFile = root.fullPath + SETTINGS_FILENAME_BRACKETS;
+        const statusPhoenix = await _validateProjectPreferencesFile(phoenixPrefFile);
+        const statusBrackets = await _validateProjectPreferencesFile(bracketsPrefFile);
+        let errorPrefFile = null;
+        if(statusPhoenix === PREF_JSON_ERR){
+            errorPrefFile = phoenixPrefFile;
+        } else if(statusPhoenix === PREF_NO_FILE && statusBrackets === PREF_JSON_ERR) {
+            errorPrefFile = bracketsPrefFile;
+        } else {
+            // no error/no pref file
+            return;
+        }
+        // Cannot parse the text read from the project preferences file.
+        const info = MainViewManager.findInAllWorkingSets(errorPrefFile);
+        let paneId;
+        if (info.length) {
+            paneId = info[0].paneId;
+        }
+        if(alertIsShown){ // due to async functions above, we have to check again
+            return;
+        }
+        alertIsShown = true;
+        FileViewController.openFileAndAddToWorkingSet(errorPrefFile, paneId)
+            .done(function () {
+                Dialogs.showModalDialog(
+                    DefaultDialogs.DIALOG_ID_ERROR,
+                    Strings.ERROR_PREFS_CORRUPT_TITLE,
+                    Strings.ERROR_PROJ_PREFS_CORRUPT
+                ).done(function () {
+                    // give the focus back to the editor with the pref file
+                    alertIsShown = false;
+                    MainViewManager.focusActivePane();
+                });
+            });
     }
 
     /**
@@ -960,38 +1082,6 @@ define(function (require, exports, module) {
         // Some legacy code calls this API with a non-canonical path
         rootPath = ProjectModel._ensureTrailingSlash(rootPath);
 
-        var projectPrefFullPath = (rootPath + SETTINGS_FILENAME),
-            file   = FileSystem.getFileForPath(projectPrefFullPath);
-
-        //Verify that the project preferences file (.brackets.json) is NOT corrupted.
-        //If corrupted, display the error message and open the file in editor for the user to edit.
-        FileUtils.readAsText(file)
-            .done(function (text) {
-                try {
-                    if (text) {
-                        JSON.parse(text);
-                    }
-                } catch (err) {
-                    // Cannot parse the text read from the project preferences file.
-                    var info = MainViewManager.findInAllWorkingSets(projectPrefFullPath);
-                    var paneId;
-                    if (info.length) {
-                        paneId = info[0].paneId;
-                    }
-                    FileViewController.openFileAndAddToWorkingSet(projectPrefFullPath, paneId)
-                        .done(function () {
-                            Dialogs.showModalDialog(
-                                DefaultDialogs.DIALOG_ID_ERROR,
-                                Strings.ERROR_PREFS_CORRUPT_TITLE,
-                                Strings.ERROR_PROJ_PREFS_CORRUPT
-                            ).done(function () {
-                                // give the focus back to the editor with the pref file
-                                MainViewManager.focusActivePane();
-                            });
-                        });
-                }
-            });
-
         if (isUpdating) {
             // We're just refreshing. Don't need to unwatch the project root, so we can start loading immediately.
             startLoad.resolve();
@@ -1008,27 +1098,18 @@ define(function (require, exports, module) {
             // close all the old files
             MainViewManager._closeAll(MainViewManager.ALL_PANES);
 
-            _unwatchProjectRoot().always(function () {
-                // Done closing old project (if any)
-                if (model.projectRoot) {
-                    LanguageManager._resetPathLanguageOverrides();
-                    PreferencesManager._reloadUserPrefs(model.projectRoot);
-                    exports.trigger(EVENT_PROJECT_CLOSE, model.projectRoot);
-                }
+            _unwatchProjectRoot().fail(console.error);
 
-                startLoad.resolve();
-            });
+            if (model.projectRoot) {
+                LanguageManager._resetPathLanguageOverrides();
+                PreferencesManager._reloadUserPrefs(model.projectRoot);
+                exports.trigger(EVENT_PROJECT_CLOSE, model.projectRoot);
+            }
+
+            startLoad.resolve();
         }
 
         startLoad.done(function () {
-            var context = { location: { scope: "user",
-                layer: "project" } };
-
-            // Clear project path map
-            if (!isUpdating) {
-                PreferencesManager._stateProjectLayer.setProjectPath(rootPath);
-            }
-
             // Populate file tree as long as we aren't running in the browser
             if (!brackets.inBrowser) {
                 if (!isUpdating) {
@@ -1047,7 +1128,7 @@ define(function (require, exports, module) {
                         _projectWarnedForTooManyFiles = false;
 
                         _setProjectRoot(rootEntry).always(function () {
-                            model.setBaseUrl(PreferencesManager.getViewState("project.baseUrl", context) || "");
+                            model.setBaseUrl(PreferencesManager.getViewState("project.baseUrl", PreferencesManager.STATE_PROJECT_CONTEXT) || "");
 
                             if (projectRootChanged) {
                                 _reloadProjectPreferencesScope();
@@ -1141,6 +1222,10 @@ define(function (require, exports, module) {
         return model.showInTree(entry).then(_saveTreeState);
     }
 
+    function _filePickerSupported() {
+        return Phoenix.browser.isTauri
+            || window.showOpenFilePicker; // fs access file picker
+    }
 
     /**
      * Open a new project. Currently, Brackets must always have a project open, so
@@ -1157,7 +1242,7 @@ define(function (require, exports, module) {
 
         var result = new $.Deferred();
 
-        if(!path && !window.showOpenFilePicker){
+        if(!path && !_filePickerSupported()){
             Dialogs.showModalDialog(
                 DefaultDialogs.DIALOG_ID_ERROR,
                 Strings.UNSUPPORTED_BROWSER_OPEN_FOLDER_TITLE,
@@ -1233,7 +1318,7 @@ define(function (require, exports, module) {
      */
     function deleteItem(entry) {
         var result = new $.Deferred();
-        let name = _getProjectRelativePathForCopy(entry.fullPath);
+        let name = _getProjectDisplayNameOrPath(entry.fullPath);
         let message = StringUtils.format(Strings.DELETING, name);
         setProjectBusy(true, message);
         entry.unlink(function (err) {
@@ -1432,7 +1517,7 @@ define(function (require, exports, module) {
             fullPath = MainViewManager.getCurrentlyViewedPath(MainViewManager.ACTIVE_PANE);
         }
         if(fullPath && isWithinProject(fullPath)){
-            let name = _getProjectRelativePathForCopy(fullPath);
+            let name = _getProjectDisplayNameOrPath(fullPath);
             let message = StringUtils.format(Strings.DUPLICATING, name);
             setProjectBusy(true, message);
             FileSystem.getFreePath(fullPath, (err, dupePath)=>{
@@ -1440,7 +1525,7 @@ define(function (require, exports, module) {
                     setProjectBusy(false, message);
                     if(err){
                         _showErrorDialog(ERR_TYPE_DUPLICATE_FAILED, false, "err",
-                            _getProjectRelativePathForCopy(fullPath));
+                            _getProjectDisplayNameOrPath(fullPath));
                         return;
                     }
                     FileSystem.resolve(dupePath, function (err, file) {
@@ -1464,7 +1549,7 @@ define(function (require, exports, module) {
 
     function _zipFailed(fullPath) {
         _showErrorDialog(ERR_TYPE_DOWNLOAD_FAILED, false, "err",
-            _getProjectRelativePathForCopy(fullPath));
+            _getProjectDisplayNameOrPath(fullPath));
     }
 
     function _downloadFolderCommand(downloadPath) {
@@ -1495,7 +1580,7 @@ define(function (require, exports, module) {
                     _zipFailed(fullPath);
                     return;
                 }
-                let name = _getProjectRelativePathForCopy(fullPath);
+                let name = _getProjectDisplayNameOrPath(fullPath);
                 let message = StringUtils.format(Strings.DOWNLOADING_FILE, name);
                 if(fileOrFolder.isFile){
                     setProjectBusy(true, message);
@@ -1518,22 +1603,14 @@ define(function (require, exports, module) {
     const OPERATION_CUT = 'cut',
         OPERATION_COPY = 'copy';
 
-    function _addTextToSystemClipboard(text) {
-        if (!navigator.clipboard) {
-            console.warn('Browser doesnt support clipboard control. system cut/copy/paste may not work');
-            return;
-        }
-        navigator.clipboard.writeText(text).catch(function(err) {
-            console.error('System clipboard error: Could not copy text: ', err);
-        });
-    }
-
     function _registerPathWithClipboard(path, operation) {
-        _addTextToSystemClipboard(window.path.basename(path));
-        localStorage.setItem("phoenix.clipboard", JSON.stringify({
+        const clipboardText = window.path.basename(path);
+        Phoenix.app.copyToClipboard(clipboardText);
+        PhStore.setItem(CLIPBOARD_SYNC_KEY, {
             operation: operation,
-            path: path
-        }));
+            path: path,
+            clipboardText: clipboardText
+        });
     }
 
     /**
@@ -1547,18 +1624,20 @@ define(function (require, exports, module) {
         return relativePath;
     }
 
-    function _getProjectRelativePathForCopy(path) {
+    function _getProjectDisplayNameOrPath(path) {
         // sometimes, when we copy across projects, there can be two project roots at work. For eg, when copying
         // across /mnt/prj1 and /app/local/prj2; both should correctly resolve to prj1/ and prj2/ even though only
         // /mnt/prj1 is the current active project root. So we cannot really use getProjectRoot().fullPath for all cases
         let projectRootParent = window.path.dirname(getProjectRoot().fullPath);
-        let relativePath = window.path.relative(projectRootParent, path);
+        let displayPath = window.path.relative(projectRootParent, path);
         if(path.startsWith(Phoenix.VFS.getMountDir())){
-            relativePath = window.path.relative(Phoenix.VFS.getMountDir(), path);
-        } else if(path.startsWith(Phoenix.VFS.getLocalDir())){
-            relativePath = window.path.relative(Phoenix.VFS.getLocalDir(), path);
+            displayPath = window.path.relative(Phoenix.VFS.getMountDir(), path);
+        } else if(path.startsWith(Phoenix.VFS.getTauriDir())){
+            displayPath = window.fs.getTauriPlatformPath(path);
+        } else if(path.startsWith(Phoenix.VFS._getVirtualDocumentsDirectory())){
+            displayPath = window.path.relative(Phoenix.VFS._getVirtualDocumentsDirectory(), path);
         }
-        return relativePath;
+        return displayPath;
     }
 
     function _copyProjectRelativePath() {
@@ -1568,10 +1647,9 @@ define(function (require, exports, module) {
             fullPath = MainViewManager.getCurrentlyViewedPath(MainViewManager.ACTIVE_PANE);
         }
         if(fullPath){
-            let projectRoot = getProjectRoot().fullPath;
-            let relativePath = window.path.relative(projectRoot, fullPath);
-            _addTextToSystemClipboard(relativePath);
-            localStorage.setItem("phoenix.clipboard", JSON.stringify({}));
+            let pathToCopy = makeProjectRelativeIfPossible(fullPath);
+            Phoenix.app.copyToClipboard(pathToCopy);
+            PhStore.setItem(CLIPBOARD_SYNC_KEY, {});
         }
     }
 
@@ -1615,23 +1693,26 @@ define(function (require, exports, module) {
         });
     }
 
-    function _isSubPathOf(dir, subDir) {
+    function _isSameOrSubPathOf(dir, subDir) {
+        if(dir === subDir){
+            return true;
+        }
         const relative = window.path.relative(dir, subDir);
         return relative && !relative.startsWith('..') && !window.path.isAbsolute(relative);
     }
 
     async function _validatePasteTarget(srcEntry, targetEntry) {
-        if(_isSubPathOf(srcEntry.fullPath, targetEntry.fullPath)){
+        if(_isSameOrSubPathOf(srcEntry.fullPath, targetEntry.fullPath)){
             _showErrorDialog(ERR_TYPE_PASTE_FAILED, srcEntry.isDirectory, "err",
-                _getProjectRelativePathForCopy(srcEntry.fullPath),
-                _getProjectRelativePathForCopy(targetEntry.fullPath));
+                _getProjectDisplayNameOrPath(srcEntry.fullPath),
+                _getProjectDisplayNameOrPath(targetEntry.fullPath));
             return false;
         }
         let baseName = window.path.basename(srcEntry.fullPath);
         let targetPath = window.path.normalize(`${targetEntry.fullPath}/${baseName}`);
         let exists = await FileSystem.existsAsync(targetPath);
         if(exists){
-            _showErrorDialog(ERR_TYPE_PASTE, srcEntry.isDirectory, "err", _getProjectRelativePathForCopy(targetPath));
+            _showErrorDialog(ERR_TYPE_PASTE, srcEntry.isDirectory, "err", _getProjectDisplayNameOrPath(targetPath));
             return false;
         }
         return true;
@@ -1644,14 +1725,14 @@ define(function (require, exports, module) {
         if(canPaste){
             let baseName = window.path.basename(srcEntry.fullPath);
             let targetPath = window.path.normalize(`${target.fullPath}/${baseName}`);
-            let message = StringUtils.format(Strings.MOVING, _getProjectRelativePathForCopy(srcEntry.fullPath));
+            let message = StringUtils.format(Strings.MOVING, _getProjectDisplayNameOrPath(srcEntry.fullPath));
             setProjectBusy(true, message);
             srcEntry.rename(targetPath, (err)=>{
                 setProjectBusy(false, message);
                 if(err){
                     _showErrorDialog(ERR_TYPE_PASTE_FAILED, srcEntry.isDirectory, "err",
-                        _getProjectRelativePathForCopy(srcEntry.fullPath),
-                        _getProjectRelativePathForCopy(target.fullPath));
+                        _getProjectDisplayNameOrPath(srcEntry.fullPath),
+                        _getProjectDisplayNameOrPath(target.fullPath));
                     return;
                 }
                 queuePathForSelection = targetPath;
@@ -1664,15 +1745,15 @@ define(function (require, exports, module) {
         let srcEntry = (await FileSystem.resolveAsync(src)).entry;
         let canPaste = await _validatePasteTarget(srcEntry, target);
         if(canPaste){
-            let name = _getProjectRelativePathForCopy(srcEntry.fullPath);
+            let name = _getProjectDisplayNameOrPath(srcEntry.fullPath);
             let message = StringUtils.format(Strings.COPYING, name);
             setProjectBusy(true, message);
             FileSystem.copy(srcEntry.fullPath, target.fullPath, (err, targetStat)=>{
                 setProjectBusy(false, message);
                 if(err){
                     _showErrorDialog(ERR_TYPE_PASTE_FAILED, srcEntry.isDirectory, "err",
-                        _getProjectRelativePathForCopy(srcEntry.fullPath),
-                        _getProjectRelativePathForCopy(target.fullPath));
+                        _getProjectDisplayNameOrPath(srcEntry.fullPath),
+                        _getProjectDisplayNameOrPath(target.fullPath));
                     return;
                 }
                 queuePathForSelection = targetStat.realPath;
@@ -1680,26 +1761,38 @@ define(function (require, exports, module) {
         }
     }
 
-    function _pasteFileCMD() {
+    async function _pasteFileCMD() {
         let targetPath = getProjectRoot().fullPath;
         let context = getContext();
         if(context){
             targetPath = context.fullPath;
         }
-        let clipboard = localStorage.getItem("phoenix.clipboard");
-        if(!clipboard){
+
+        const copiedFiles = await Phoenix.app.clipboardReadFiles();
+        if(copiedFiles) {
+            // there were some files the user copied external, eg. from os file explorer. This takes precedence
+            for(let copiedFileOrFolderPath of copiedFiles){
+                _performCopy(copiedFileOrFolderPath, targetPath);
+            }
             return;
         }
-        clipboard = JSON.parse(clipboard);
+
+        const clipboardText = await Phoenix.app.clipboardReadText();
+        const clipboard = PhStore.getItem(CLIPBOARD_SYNC_KEY);
+        if(!clipboard || clipboard.clipboardText !== clipboardText){
+            // either no copied file, or user copied something outside the app.
+            return;
+        }
         switch (clipboard.operation) {
-        case OPERATION_CUT: _performCut(clipboard.path, targetPath); break;
-        case OPERATION_COPY: _performCopy(clipboard.path, targetPath); break;
+        case OPERATION_CUT: await _performCut(clipboard.path, targetPath); break;
+        case OPERATION_COPY: await _performCopy(clipboard.path, targetPath); break;
         default: console.error("Clipboard unknown Operation: ", clipboard, targetPath);
         }
     }
 
     // Initialize variables and listeners that depend on the HTML DOM
     AppInit.htmlReady(function () {
+        PhStore.watchExternalChanges(CLIPBOARD_SYNC_KEY);
         $projectTreeContainer = $("#project-files-container");
         $projectTreeContainer.addClass("jstree jstree-brackets");
         $projectTreeContainer.css("overflow", "auto");
@@ -1777,9 +1870,11 @@ define(function (require, exports, module) {
             .setEnabled(!Phoenix.VFS.isLocalDiscPath(projectRoot.fullPath));
     }
 
-    exports.on(EVENT_PROJECT_OPEN, _reloadProjectPreferencesScope);
-    exports.on(EVENT_PROJECT_OPEN, _saveProjectPath);
-    exports.on(EVENT_PROJECT_OPEN, _setProjectDownloadCommandEnabled);
+    exports.on(EVENT_PROJECT_OPEN, (_evt, projectRoot)=>{
+        _reloadProjectPreferencesScope();
+        _saveProjectPath();
+        _setProjectDownloadCommandEnabled(_evt, projectRoot);
+    });
     exports.on("beforeAppClose", _unwatchProjectRoot);
 
     // Due to circular dependencies, not safe to call on() directly for other modules' events
@@ -1885,26 +1980,31 @@ define(function (require, exports, module) {
      * @param {boolean=} includeWorkingSet If true, include files in the working set
      *          that are not under the project root (*except* for untitled documents).
      * @param {boolean=} sort If true, The files will be sorted by their paths
+     * @param {Object} options optional path within project to narrow down the search
+     * @param {File} options.scope optional path within project to narrow down the search
      *
      * @return {$.Promise} Promise that is resolved with an Array of File objects.
      */
-    function getAllFiles(filter, includeWorkingSet, sort) {
+    function getAllFiles(filter, includeWorkingSet, sort, options) {
         var viewFiles, deferred;
 
         // The filter and includeWorkingSet params are both optional.
         // Handle the case where filter is omitted but includeWorkingSet is
         // specified.
-        if (includeWorkingSet === undefined && typeof (filter) !== "function") {
+        if (typeof (filter) !== "function") {
+            options = sort;
+            sort = includeWorkingSet;
             includeWorkingSet = filter;
             filter = null;
         }
+        options = options || {};
 
         if (includeWorkingSet) {
             viewFiles = MainViewManager.getWorkingSet(MainViewManager.ALL_PANES);
         }
 
         deferred = new $.Deferred();
-        model.getAllFiles(filter, viewFiles, sort)
+        model.getAllFiles(filter, viewFiles, sort, {scope: options.scope})
             .done(function (fileList) {
                 deferred.resolve(fileList);
             })
@@ -1931,7 +2031,8 @@ define(function (require, exports, module) {
      */
     function addIconProvider(callback, priority= 0) {
         WorkingSetView.addIconProvider(callback, priority);
-        return FileTreeView.addIconProvider(callback, priority);
+        FileTreeView.addIconProvider(callback, priority);
+        rerenderTree();
     }
 
     /**
@@ -1945,7 +2046,8 @@ define(function (require, exports, module) {
      */
     function addClassesProvider(callback, priority) {
         WorkingSetView.addClassProvider(callback, priority);
-        return FileTreeView.addClassesProvider(callback, priority);
+        FileTreeView.addClassesProvider(callback, priority);
+        rerenderTree();
     }
 
     /**

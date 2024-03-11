@@ -19,6 +19,8 @@
  *
  */
 
+/*global fs*/
+
 /**
  * Manages parts of the status bar related to the current editor's state.
  */
@@ -26,10 +28,10 @@ define(function (require, exports, module) {
 
 
     // Load dependent modules
-    var _                    = require("thirdparty/lodash"),
+    const _                    = require("thirdparty/lodash"),
         AnimationUtils       = require("utils/AnimationUtils"),
         AppInit              = require("utils/AppInit"),
-        DropdownButton       = require("widgets/DropdownButton").DropdownButton,
+        DropdownButton       = require("widgets/DropdownButton"),
         EditorManager        = require("editor/EditorManager"),
         MainViewManager      = require("view/MainViewManager"),
         Editor               = require("editor/Editor").Editor,
@@ -38,12 +40,10 @@ define(function (require, exports, module) {
         PreferencesManager   = require("preferences/PreferencesManager"),
         StatusBar            = require("widgets/StatusBar"),
         Strings              = require("strings"),
-        FileUtils            = require("file/FileUtils"),
         InMemoryFile         = require("document/InMemoryFile"),
-        Dialogs              = require("widgets/Dialogs"),
-        DefaultDialogs       = require("widgets/DefaultDialogs"),
         ProjectManager       = require("project/ProjectManager"),
         Async                = require("utils/Async"),
+        TaskManager    = require("features/TaskManager"),
         FileSystem           = require("filesystem/FileSystem"),
         CommandManager       = require("command/CommandManager"),
         Commands             = require("command/Commands"),
@@ -51,12 +51,12 @@ define(function (require, exports, module) {
         StringUtils          = require("utils/StringUtils"),
         Metrics              = require("utils/Metrics");
 
-    var SupportedEncodingsText = require("text!supported-encodings.json"),
-        SupportedEncodings = JSON.parse(SupportedEncodingsText);
+    const SupportedEncodings = fs.SUPPORTED_ENCODINGS.sort();
 
     /* StatusBar indicators */
     var languageSelect, // this is a DropdownButton instance
         encodingSelect, // this is a DropdownButton instance
+        tasksSelect, // this is a DropdownButton instance
         $cursorInfo,
         $fileInfo,
         $indentType,
@@ -346,17 +346,9 @@ define(function (require, exports, module) {
         promise.done(function (text, readTimestamp) {
             encodingSelect.$button.text(document.file._encoding);
             // Store the preferred encoding in the state
-            var projectRoot = ProjectManager.getProjectRoot(),
-                context = {
-                    location: {
-                        scope: "user",
-                        layer: "project",
-                        layerID: projectRoot.fullPath
-                    }
-                };
-            var encoding = PreferencesManager.getViewState("encoding", context);
+            const encoding = PreferencesManager.getViewState("encoding", PreferencesManager.STATE_PROJECT_CONTEXT);
             encoding[document.file.fullPath] = document.file._encoding;
-            PreferencesManager.setViewState("encoding", encoding, context);
+            PreferencesManager.setViewState("encoding", encoding, PreferencesManager.STATE_PROJECT_CONTEXT);
         });
         promise.fail(function (error) {
             console.log("Error reloading contents of " + document.file.fullPath, error);
@@ -383,7 +375,7 @@ define(function (require, exports, module) {
         $indentWidthInput   = $("#indent-width-input");
         $statusOverwrite    = $("#status-overwrite");
 
-        languageSelect      = new DropdownButton("", [], function (item, index) {
+        languageSelect      = new DropdownButton.DropdownButton("", [], function (item, index) {
             var document = EditorManager.getActiveEditor().document,
                 defaultLang = LanguageManager.getLanguageForPath(document.file.fullPath, true);
 
@@ -410,7 +402,7 @@ define(function (require, exports, module) {
         languageSelect.$button.attr("title", Strings.STATUSBAR_LANG_TOOLTIP);
 
 
-        encodingSelect = new DropdownButton("", [], function (item, index) {
+        encodingSelect = new DropdownButton.DropdownButton("", [], function (item, index) {
             var document = EditorManager.getActiveEditor().document;
             var html = _.escape(item);
 
@@ -428,7 +420,43 @@ define(function (require, exports, module) {
         encodingSelect.$button.addClass("btn-status-bar");
         $("#status-encoding").append(encodingSelect.$button);
         encodingSelect.$button.attr("title", Strings.STATUSBAR_ENCODING_TOOLTIP);
+        let hideSpinner = PreferencesManager.getViewState("StatusBar.HideSpinner");
+        if(hideSpinner){
+            $("#status-tasks .spinner").addClass("hide-spinner");
+        }
 
+        tasksSelect = new DropdownButton.DropdownButton(Strings.STATUSBAR_TASKS, [Strings.STATUSBAR_TASKS_HIDE_SPINNER], function (item, index) {
+            if (item === Strings.STATUSBAR_TASKS_HIDE_SPINNER) {
+                hideSpinner = PreferencesManager.getViewState("StatusBar.HideSpinner");
+                if(hideSpinner){
+                    return  "<span class='checked-spinner'></span>" + item;
+                }
+                return item;
+            }
+            return TaskManager._renderItem(item, index);
+        });
+        TaskManager._setTaskSelect(tasksSelect);
+
+        tasksSelect.dropdownExtraClasses = "dropdown-status-bar";
+        tasksSelect.$button.addClass("btn-status-bar");
+        $("#status-tasks").append(tasksSelect.$button);
+        tasksSelect.$button.attr("title", Strings.STATUSBAR_TASKS_TOOLTIP);
+        tasksSelect.on("select", function (e, selection) {
+            if(selection === Strings.STATUSBAR_TASKS_HIDE_SPINNER){
+                hideSpinner = !PreferencesManager.getViewState("StatusBar.HideSpinner");
+                PreferencesManager.setViewState("StatusBar.HideSpinner", hideSpinner);
+                if(hideSpinner){
+                    $("#status-tasks .spinner").addClass("hide-spinner");
+                } else {
+                    $("#status-tasks .spinner").removeClass("hide-spinner");
+                }
+                return;
+            }
+            return TaskManager._onSelect(e, selection);
+        });
+        tasksSelect.on(DropdownButton.EVENT_DROPDOWN_SHOWN, (evt)=>{
+            return TaskManager._onDropdownShown(evt);
+        });
 
         // indentation event handlers
         $indentType.on("click", _toggleIndentType);
@@ -533,24 +561,16 @@ define(function (require, exports, module) {
     }
 
     ProjectManager.on("projectOpen", function () {
-        var projectRoot = ProjectManager.getProjectRoot(),
-            context = {
-                location: {
-                    scope: "user",
-                    layer: "project",
-                    layerID: projectRoot.fullPath
-                }
-            };
-        var encoding = PreferencesManager.getViewState("encoding", context);
+        let encoding = PreferencesManager.getViewState("encoding", PreferencesManager.STATE_PROJECT_CONTEXT);
         if (!encoding) {
             encoding = {};
-            PreferencesManager.setViewState("encoding", encoding, context);
+            PreferencesManager.setViewState("encoding", encoding, PreferencesManager.STATE_PROJECT_CONTEXT);
         }
         Async.doSequentially(Object.keys(encoding), function (filePath, index) {
             return _checkFileExistance(filePath, index, encoding);
         }, false)
             .always(function () {
-                PreferencesManager.setViewState("encoding", encoding, context);
+                PreferencesManager.setViewState("encoding", encoding, PreferencesManager.STATE_PROJECT_CONTEXT);
             });
     });
 

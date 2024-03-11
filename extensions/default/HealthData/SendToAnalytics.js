@@ -26,6 +26,7 @@ define(function (require, exports, module) {
     const Metrics = brackets.getModule("utils/Metrics"),
         PreferencesManager  = brackets.getModule("preferences/PreferencesManager"),
         PerfUtils           = brackets.getModule("utils/PerfUtils"),
+        NodeUtils           = brackets.getModule("utils/NodeUtils"),
         themesPref          = PreferencesManager.getExtensionPrefs("themes");
 
     const PLATFORM = Metrics.EVENT_TYPE.PLATFORM,
@@ -110,17 +111,39 @@ define(function (require, exports, module) {
 
     function sendPlatformMetrics() {
         Metrics.countEvent(PLATFORM, "os", brackets.platform);
-        Metrics.countEvent(PLATFORM, "os.flavor", _getPlatformInfo());
         Metrics.countEvent(PLATFORM, "userAgent", window.navigator.userAgent);
         Metrics.countEvent(PLATFORM, "languageOS", brackets.app.language);
         Metrics.countEvent(PLATFORM, "languageBrackets", brackets.getLocale());
         Metrics.countEvent(PLATFORM, "bracketsVersion", brackets.metadata.version);
+        if(Phoenix.platform === "linux" && Phoenix.browser.isTauri) {
+            NodeUtils.getLinuxOSFlavorName()
+                .then(flavor=>{
+                    if(flavor){
+                        Metrics.countEvent(PLATFORM, "os.flavor", flavor);
+                    } else {
+                        Metrics.countEvent(PLATFORM, "os.flavor", _getPlatformInfo());
+                    }
+                });
+        } else {
+            Metrics.countEvent(PLATFORM, "os.flavor", _getPlatformInfo());
+        }
         _emitDeviceTypeMetrics();
         _emitBrowserMetrics();
         _emitMobileMetricsIfPresent();
         _sendStorageMetrics();
     }
 
+    function _bugsnagPerformance(key, valueMs) {
+        if(Metrics.isDisabled() || !window.BugsnagPerformance || Phoenix.isTestWindow){
+            return;
+        }
+        let activityStartTime = new Date();
+        let activityEndTime = new Date(activityStartTime.getTime() + valueMs);
+        window.BugsnagPerformance
+            .startSpan(key, { startTime: activityStartTime })
+            .end(activityEndTime);
+    }
+    
     // Performance
     function sendStartupPerformanceMetrics() {
         const healthReport = PerfUtils.getHealthReport();
@@ -130,8 +153,32 @@ define(function (require, exports, module) {
         }
         Metrics.valueEvent(PERFORMANCE, "startup", labelAppStart,
             Number(healthReport["AppStartupTime"]));
+        _bugsnagPerformance(labelAppStart, Number(healthReport["AppStartupTime"])); // expensive api, use sparsely
         Metrics.valueEvent(PERFORMANCE, "startup", "ModuleDepsResolved",
             Number(healthReport["ModuleDepsResolved"]));
+        _bugsnagPerformance("ModuleDepsResolved", Number(healthReport["ModuleDepsResolved"])); // expensive api, use sparsely
+        Metrics.valueEvent(PERFORMANCE, "startup", "PhStore", PhStore._storageBootstrapTime);
+        _bugsnagPerformance("PhStore",
+            PhStore._storageBootstrapTime); // expensive api, use sparsely
+        if(Phoenix.browser.isTauri) {
+            Metrics.valueEvent(PERFORMANCE, "startup", "tauriBoot", window._tauriBootVars.bootstrapTime);
+            _bugsnagPerformance("tauriBootVars",
+                window._tauriBootVars.bootstrapTime); // expensive api, use sparsely
+        }
+        if(window.nodeSetupDonePromise) {
+            window.nodeSetupDonePromise
+                .then(()=>{
+                    if(window.PhNodeEngine && window.PhNodeEngine._nodeLoadTime){
+                        Metrics.valueEvent(PERFORMANCE, "startup", "nodeBoot", window.PhNodeEngine._nodeLoadTime);
+                        _bugsnagPerformance("nodeBoot",
+                            window.PhNodeEngine._nodeLoadTime); // expensive api, use sparsely
+                    }
+                    Metrics.countEvent(PERFORMANCE, "nodeBoot", "success", 1);
+                })
+                .catch(_err=>{
+                    Metrics.countEvent(PERFORMANCE, "nodeBoot", "fail", 1);
+                });
+        }
     }
 
     // Themes
