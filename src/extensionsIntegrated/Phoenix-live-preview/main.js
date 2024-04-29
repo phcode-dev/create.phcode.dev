@@ -36,18 +36,22 @@
  */
 
 /*jslint vars: true, plusplus: true, devel: true, nomen: true, regexp: true, indent: 4, maxerr: 50 */
-/*global path*/
+/*global path, jsPromise*/
 //jshint-ignore:no-start
 
 define(function (require, exports, module) {
     const ExtensionUtils   = require("utils/ExtensionUtils"),
         EditorManager      = require("editor/EditorManager"),
+        FileViewController  = require("project/FileViewController"),
+        DocumentManager = require("document/DocumentManager"),
         ExtensionInterface = require("utils/ExtensionInterface"),
         CommandManager     = require("command/CommandManager"),
         Commands           = require("command/Commands"),
         Menus              = require("command/Menus"),
         WorkspaceManager   = require("view/WorkspaceManager"),
         AppInit            = require("utils/AppInit"),
+        ModalBar           = require("widgets/ModalBar").ModalBar,
+        PreferencesManager = require("preferences/PreferencesManager"),
         ProjectManager     = require("project/ProjectManager"),
         MainViewManager    = require("view/MainViewManager"),
         Strings            = require("strings"),
@@ -60,11 +64,20 @@ define(function (require, exports, module) {
         FileSystem          = require("filesystem/FileSystem"),
         BrowserStaticServer  = require("./BrowserStaticServer"),
         NodeStaticServer  = require("./NodeStaticServer"),
+        LivePreviewSettings  = require("./LivePreviewSettings"),
+        NodeUtils = require("utils/NodeUtils"),
         TrustProjectHTML    = require("text!./trust-project.html"),
         panelHTML       = require("text!./panel.html"),
+        Dialogs = require("widgets/Dialogs"),
+        DefaultDialogs = require("widgets/DefaultDialogs"),
         utils = require('./utils');
 
-    const StaticServer = Phoenix.browser.isTauri? NodeStaticServer : BrowserStaticServer;
+    const StateManager = PreferencesManager.stateManager;
+    const STATE_CUSTOM_SERVER_BANNER_ACK = "customServerBannerDone";
+    let customServerModalBar;
+
+    const isBrowser = !Phoenix.isNativeApp;
+    const StaticServer = Phoenix.isNativeApp? NodeStaticServer : BrowserStaticServer;
 
     const EVENT_EMBEDDED_IFRAME_WHO_AM_I = 'whoAmIframePhoenix';
     const EVENT_EMBEDDED_IFRAME_FOCUS_EDITOR = 'embeddedIframeFocusEditor';
@@ -82,21 +95,41 @@ define(function (require, exports, module) {
     </iframe>
     `;
 
+    if(Phoenix.isTestWindow) {
+        // for integ tests
+        window._livePreviewIntegTest = {
+            urlLoadCount: 0,
+            STATE_CUSTOM_SERVER_BANNER_ACK
+        };
+    }
+
     // jQuery objects
     let $icon,
+        $settingsIcon,
         $iframe,
         $panel,
         $pinUrlBtn,
         $highlightBtn,
         $livePreviewPopBtn,
-        $reloadBtn;
+        $reloadBtn,
+        $chromeButton,
+        $safariButton,
+        $edgeButton,
+        $firefoxButton,
+        $chromeButtonBallast,
+        $safariButtonBallast,
+        $edgeButtonBallast,
+        $firefoxButtonBallast,
+        $panelTitle;
+
+    let customLivePreviewBannerShown = false;
 
     StaticServer.on(EVENT_EMBEDDED_IFRAME_WHO_AM_I, function () {
         if($iframe && $iframe[0]) {
             const iframeDom = $iframe[0];
             iframeDom.contentWindow.postMessage({
                 type: "WHO_AM_I_RESPONSE",
-                isTauri: Phoenix.browser.isTauri
+                isTauri: Phoenix.isNativeApp
             }, "*"); // this is not sensitive info, and is only dispatched if requested by the iframe
         }
     });
@@ -135,7 +168,7 @@ define(function (require, exports, module) {
         // to mitigate DOS attacks coming from the live preview in the future. A malicious project changing its on
         // text only using its own code should be an acceptable risk for now as it cant affect anything else in the
         // system.
-        if(Phoenix.isTestWindow || Phoenix.browser.isTauri){ // for test windows, we trust all test files
+        if(Phoenix.isTestWindow || Phoenix.isNativeApp){ // for test windows, we trust all test files
             return true;
         }
         // In browsers, The url bar will show up as phcode.dev for live previews and there is a chance that
@@ -210,10 +243,10 @@ define(function (require, exports, module) {
         $iframe = newIframe;
     }
 
-    let panelShownOnce = false;
+    let panelShownAtStartup;
     function _setPanelVisibility(isVisible) {
         if (isVisible) {
-            panelShownOnce = true;
+            panelShownAtStartup = true;
             $icon.toggleClass("active");
             panel.show();
             _loadPreview(true);
@@ -266,24 +299,70 @@ define(function (require, exports, module) {
         Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "HighlightBtn", "click");
     }
 
-    function _popoutLivePreview() {
+    const ALLOWED_BROWSERS_NAMES = [`chrome`, `firefox`, `safari`, `edge`, `browser`, `browserPrivate`];
+    function _popoutLivePreview(browserName) {
         // We cannot use $iframe.src here if panel is hidden
         const openURL = StaticServer.getTabPopoutURL(currentLivePreviewURL);
-        NativeApp.openURLInDefaultBrowser(openURL, "livePreview");
-        Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "popoutBtn", "click");
-        _loadPreview(true);
-        _setPanelVisibility(false);
+        if(browserName && ALLOWED_BROWSERS_NAMES.includes(browserName)){
+            Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "popout", browserName);
+            NodeUtils.openUrlInBrowser(openURL, browserName)
+                .then(()=>{
+                    _loadPreview(true);
+                    _setPanelVisibility(false);
+                })
+                .catch(err=>{
+                    console.error("Error opening url in browser: ", browserName, err);
+                    Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "popFail", browserName);
+                    Dialogs.showModalDialog(
+                        DefaultDialogs.DIALOG_ID_ERROR,
+                        StringUtils.format(Strings.LIVE_DEV_OPEN_ERROR_TITLE, browserName),
+                        StringUtils.format(Strings.LIVE_DEV_OPEN_ERROR_MESSAGE, browserName)
+                    );
+                });
+        } else {
+            NativeApp.openURLInDefaultBrowser(openURL, "livePreview");
+            Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "popoutBtn", "click");
+            _loadPreview(true);
+            _setPanelVisibility(false);
+        }
     }
 
-    function _setTitle(fileName) {
+    function _setTitle(fileName, fullPath, currentLivePreviewURL) {
         let message = Strings.LIVE_DEV_SELECT_FILE_TO_PREVIEW,
             tooltip = message;
         if(fileName){
             message = `${fileName} - ${Strings.LIVE_DEV_STATUS_TIP_OUT_OF_SYNC}`;
-            tooltip = `${Strings.LIVE_DEV_STATUS_TIP_OUT_OF_SYNC} - ${fileName}`;
+            tooltip = StringUtils.format(Strings.LIVE_DEV_TOOLTIP_SHOW_IN_EDITOR, fileName);
         }
-        document.getElementById("panel-live-preview-title").textContent = message;
-        document.getElementById("live-preview-plugin-toolbar").title = tooltip;
+        if(currentLivePreviewURL){
+            tooltip = `${tooltip}\n${currentLivePreviewURL}`;
+        }
+        $panelTitle.text(currentLivePreviewURL || message);
+        $panelTitle.attr("title", tooltip);
+        $panelTitle.attr("data-fullPath", fullPath);
+    }
+
+    function _showOpenBrowserIcons() {
+        if(!Phoenix.isNativeApp) {
+            return;
+        }
+        // only in desktop builds we show open with browser icons
+        $chromeButton.removeClass("forced-hidden");
+        $chromeButtonBallast.removeClass("forced-hidden");
+        $chromeButtonBallast.addClass("forced-inVisible");
+
+        $edgeButton.removeClass("forced-hidden");
+        $edgeButtonBallast.removeClass("forced-hidden");
+        $edgeButtonBallast.addClass("forced-inVisible");
+
+        $firefoxButton.removeClass("forced-hidden");
+        $firefoxButtonBallast.removeClass("forced-hidden");
+        $firefoxButtonBallast.addClass("forced-inVisible");
+        if (brackets.platform === "mac") {
+            $safariButton.removeClass("forced-hidden");
+            $safariButtonBallast.removeClass("forced-hidden");
+            $safariButtonBallast.addClass("forced-inVisible");
+        }
     }
 
     async function _createExtensionPanel() {
@@ -292,7 +371,12 @@ define(function (require, exports, module) {
             livePreview: Strings.LIVE_DEV_STATUS_TIP_OUT_OF_SYNC,
             clickToReload: Strings.LIVE_DEV_CLICK_TO_RELOAD_PAGE,
             toggleLiveHighlight: Strings.LIVE_DEV_TOGGLE_LIVE_HIGHLIGHT,
+            livePreviewSettings: Strings.LIVE_DEV_SETTINGS,
             clickToPopout: Strings.LIVE_DEV_CLICK_POPOUT,
+            openInChrome: Strings.LIVE_DEV_OPEN_CHROME,
+            openInSafari: Strings.LIVE_DEV_OPEN_SAFARI,
+            openInEdge: Strings.LIVE_DEV_OPEN_EDGE,
+            openInFirefox: Strings.LIVE_DEV_OPEN_FIREFOX,
             clickToPinUnpin: Strings.LIVE_DEV_CLICK_TO_PIN_UNPIN
         };
         const PANEL_MIN_SIZE = 50;
@@ -305,11 +389,56 @@ define(function (require, exports, module) {
         $highlightBtn = $panel.find("#highlightLPButton");
         $reloadBtn = $panel.find("#reloadLivePreviewButton");
         $livePreviewPopBtn = $panel.find("#livePreviewPopoutButton");
+        $chromeButton = $panel.find("#chromeButton");
+        $safariButton = $panel.find("#safariButton");
+        $edgeButton = $panel.find("#edgeButton");
+        $firefoxButton = $panel.find("#firefoxButton");
+        // ok i dont know enough CSS to do this without these Ballast/ this works for the limited dev time I have.
+        $chromeButtonBallast = $panel.find("#chromeButtonBallast");
+        $safariButtonBallast = $panel.find("#safariButtonBallast");
+        $edgeButtonBallast = $panel.find("#edgeButtonBallast");
+        $firefoxButtonBallast = $panel.find("#firefoxButtonBallast");
+        $panelTitle = $panel.find("#panel-live-preview-title");
+        $settingsIcon = $panel.find("#livePreviewSettingsBtn");
+
+        $panel.find(".live-preview-settings-banner-btn").on("click", ()=>{
+            CommandManager.execute(Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS);
+            Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "settingsBtnBanner", "click");
+        });
+        $panel.find(".custom-server-banner-close-icon").on("click", ()=>{
+            $panel.find(".live-preview-custom-banner").addClass("forced-hidden");
+        });
         $iframe[0].onload = function () {
             $iframe.attr('srcdoc', null);
         };
+        $panelTitle.on("click", ()=>{
+            const fullPath = $panelTitle.attr("data-fullPath");
+            const openPanes = MainViewManager.findInAllWorkingSets(fullPath);
+            let paneToUse = MainViewManager.ACTIVE_PANE;
+            if(openPanes.length) {
+                paneToUse = openPanes[0].paneId;
+            }
+            FileViewController.openFileAndAddToWorkingSet(fullPath, paneToUse);
+        });
+        $chromeButton.on("click", ()=>{
+            _popoutLivePreview("chrome");
+        });
+        $safariButton.on("click", ()=>{
+            _popoutLivePreview("safari");
+        });
+        $edgeButton.on("click", ()=>{
+            _popoutLivePreview("edge");
+        });
+        $firefoxButton.on("click", ()=>{
+            _popoutLivePreview("firefox");
+        });
+        _showOpenBrowserIcons();
+        $settingsIcon.click(()=>{
+            CommandManager.execute(Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS);
+            Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "settingsBtn", "click");
+        });
 
-        const popoutSupported = Phoenix.browser.isTauri
+        const popoutSupported = Phoenix.isNativeApp
             || Phoenix.browser.desktop.isChromeBased || Phoenix.browser.desktop.isFirefox;
         if(!popoutSupported){
             // live preview can be popped out currently in only chrome based browsers. The cross domain iframe
@@ -330,13 +459,12 @@ define(function (require, exports, module) {
         $highlightBtn.click(_toggleLiveHighlights);
         $livePreviewPopBtn.click(_popoutLivePreview);
         $reloadBtn.click(()=>{
-            LiveDevelopment.openLivePreview();
-            _loadPreview(true);
+            _loadPreview(true, true);
             Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "reloadBtn", "click");
         });
     }
 
-    async function _loadPreview(force) {
+    async function _loadPreview(force, isReload) {
         // we wait till the first server ready event is received till we render anything. else a 404-page may
         // briefly flash on first load of phoenix as we try to load the page before the server is available.
         const isPreviewLoadable = panel.isVisible() || StaticServer.hasActiveLivePreviews();
@@ -360,33 +488,73 @@ define(function (require, exports, module) {
             currentLivePreviewURL = newSrc;
             currentPreviewFile = previewDetails.fullPath;
         }
+        const existingPreviewFile = $iframe && $iframe.attr('data-original-path');
+        const existingPreviewURL = $iframe && $iframe.attr('data-original-src');
+        if(isReload && previewDetails.isNoPreview && existingPreviewURL &&
+            existingPreviewFile && ProjectManager.isWithinProject(existingPreviewFile)) {
+            currentLivePreviewURL = existingPreviewURL;
+            currentPreviewFile = existingPreviewFile;
+        } else if(isReload){
+            LiveDevelopment.openLivePreview();
+        }
         let relativeOrFullPath= ProjectManager.makeProjectRelativeIfPossible(currentPreviewFile);
         relativeOrFullPath = Phoenix.app.getDisplayPath(relativeOrFullPath);
-        _setTitle(relativeOrFullPath);
+        _setTitle(relativeOrFullPath, currentPreviewFile,
+            previewDetails.isCustomServer ? currentLivePreviewURL : "");
         if(panel.isVisible()) {
+            if(!customLivePreviewBannerShown && LivePreviewSettings.isUsingCustomServer()
+                && previewDetails.isCustomServer) {
+                customLivePreviewBannerShown = true;
+                $panel.find(".live-preview-custom-banner").removeClass("forced-hidden");
+                $panel.find(".live-preview-banner-message").text(
+                    StringUtils.format(Strings.LIVE_PREVIEW_CUSTOM_SERVER_BANNER,
+                        LivePreviewSettings.getCustomServeBaseURL())
+                );
+            }
             let newIframe = $(LIVE_PREVIEW_IFRAME_HTML);
             newIframe.insertAfter($iframe);
             $iframe.remove();
             $iframe = newIframe;
             if(_isProjectPreviewTrusted()){
                 $iframe.attr('src', currentLivePreviewURL);
+                // we have to save src as the iframe src attribute may have redirected, and we cannot read it as its
+                // a third party domain once its redirected.
+                $iframe.attr('data-original-src', currentLivePreviewURL);
+                $iframe.attr('data-original-path', currentPreviewFile);
+                if(Phoenix.isTestWindow) {
+                    window._livePreviewIntegTest.currentLivePreviewURL = currentLivePreviewURL;
+                    window._livePreviewIntegTest.urlLoadCount++;
+                }
             } else {
                 $iframe.attr('srcdoc', _getTrustProjectPage());
             }
         }
         Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "render",
             utils.getExtension(previewDetails.fullPath));
-        StaticServer.redirectAllTabs(currentLivePreviewURL);
+        StaticServer.redirectAllTabs(currentLivePreviewURL, force);
+        if(Phoenix.isTestWindow) {
+            // for integ tests
+            window._livePreviewIntegTest.redirectURL = currentLivePreviewURL;
+            window._livePreviewIntegTest.redirectURLforce = force;
+        }
     }
 
     async function _projectFileChanges(evt, changedFile) {
-        if(changedFile && utils.isPreviewableFile(changedFile.fullPath)){
+        if(changedFile && (utils.isPreviewableFile(changedFile.fullPath) ||
+            utils.isServerRenderedFile(changedFile.fullPath))){
             // we are getting this change event somehow.
             // bug, investigate why we get this change event as a project file change.
             const previewDetails = await StaticServer.getPreviewDetails();
-            if(!(LiveDevelopment.isActive() && previewDetails.isHTMLFile)) {
+            let shouldReload = false;
+            if(previewDetails.isCustomServer && !previewDetails.serverSupportsHotReload){
+                shouldReload = true;
+            }
+            if(!previewDetails.isCustomServer && !(LiveDevelopment.isActive() && previewDetails.isHTMLFile)) {
                 // We force reload live preview on save for all non html preview-able file or
                 // if html file and live preview isnt active.
+                shouldReload = true;
+            }
+            if(shouldReload) {
                 _loadPreview(true);
             }
         }
@@ -398,6 +566,7 @@ define(function (require, exports, module) {
             const fileEntry = FileSystem.getFileForPath(readmePath);
             fileEntry.exists(function (err, exists) {
                 if (!err && exists) {
+                    _setPanelVisibility(true);
                     CommandManager.execute(Commands.FILE_ADD_TO_WORKING_SET, {fullPath: readmePath});
                     _setProjectReadmePreviewdOnce();
                 }
@@ -406,7 +575,10 @@ define(function (require, exports, module) {
     }
 
     async function _projectOpened(_evt) {
+        customLivePreviewBannerShown = false;
+        $panel.find(".live-preview-custom-banner").addClass("forced-hidden");
         _openReadmeMDIfFirstTime();
+        _customServerMetrics();
         if(!LiveDevelopment.isActive()
             && (panel.isVisible() || StaticServer.hasActiveLivePreviews())) {
             // we do this only once after project switch if live preview for a doc is not active.
@@ -416,6 +588,16 @@ define(function (require, exports, module) {
             _togglePinUrl();
         }
         $iframe.attr('src', StaticServer.getNoPreviewURL());
+        if(!panelShownAtStartup && !isBrowser){
+            // we dont do this in browser as the virtual server may not yet be started on app start
+            // project open and a 404 page will briefly flash in the browser!
+            const currentDocument = DocumentManager.getCurrentDocument();
+            const currentFile = currentDocument? currentDocument.file : ProjectManager.getSelectedItem();
+            const isPreviewable = currentFile ? utils.isPreviewableFile(currentFile.fullPath) : false;
+            if(isPreviewable){
+                _setPanelVisibility(true);
+            }
+        }
         if(!panel.isVisible()){
             return;
         }
@@ -427,10 +609,14 @@ define(function (require, exports, module) {
             _togglePinUrl();
         }
         LiveDevelopment.closeLivePreview();
+        if(customServerModalBar){
+            customServerModalBar.close();
+            customServerModalBar = null;
+        }
     }
 
     function _activeDocChanged() {
-        if(!LiveDevelopment.isActive()
+        if(!LivePreviewSettings.isUsingCustomServer() && !LiveDevelopment.isActive()
             && (panel.isVisible() || StaticServer.hasActiveLivePreviews())) {
             // we do this only once after project switch if live preview for a doc is not active.
             LiveDevelopment.openLivePreview();
@@ -448,6 +634,9 @@ define(function (require, exports, module) {
      * @private
      */
     async function _openLivePreviewURL(_event, previewDetails) {
+        if(LivePreviewSettings.isUsingCustomServer()){
+            return;
+        }
         _loadPreview(true);
         const currentPreviewDetails = await StaticServer.getPreviewDetails();
         if(currentPreviewDetails.isHTMLFile && currentPreviewDetails.fullPath !== previewDetails.fullPath){
@@ -456,16 +645,96 @@ define(function (require, exports, module) {
         }
     }
 
-    function _currentFileChanged(_event, newFile) {
-        if(newFile && utils.isPreviewableFile(newFile.fullPath)){
+    async function _currentFileChanged(_event, changedFile) {
+        const fullPath = changedFile.fullPath;
+        if(changedFile && _shouldShowCustomServerBar(fullPath)){
+            _showCustomServerBar();
+        }
+        const shouldUseInbuiltPreview = utils.isMarkdownFile(fullPath) || utils.isSVG(fullPath);
+        if(urlPinned || (LivePreviewSettings.isUsingCustomServer() &&
+            !LivePreviewSettings.getCustomServerConfig(fullPath) && !shouldUseInbuiltPreview)){
+            return;
+        }
+        if(changedFile && (utils.isPreviewableFile(fullPath) ||
+            utils.isServerRenderedFile(fullPath))){
+            if(!panelShownAtStartup){
+                _setPanelVisibility(true);
+            }
             _loadPreview();
         }
+    }
+
+    function _showSettingsDialog() {
+        return new Promise(resolve=>{
+            LivePreviewSettings.showSettingsDialog()
+                .then(()=>{
+                    _loadPreview();
+                    resolve();
+                });
+        });
+    }
+
+    function _customServerMetrics() {
+        if(LivePreviewSettings.isUsingCustomServer()){
+            Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "customServ", "yes");
+            Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "framework",
+                LivePreviewSettings.getCustomServerFramework() || "unknown");
+            if(LivePreviewSettings.serverSupportsHotReload()) {
+                Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "hotReload", "yes");
+            }
+        }
+    }
+
+    function _shouldShowCustomServerBar(fullPath) {
+        const isBannerAck = StateManager.get(STATE_CUSTOM_SERVER_BANNER_ACK, StateManager.PROJECT_CONTEXT);
+        if(isBannerAck || LivePreviewSettings.isUsingCustomServer()){
+            return false;
+        }
+        return utils.isServerRenderedFile(fullPath);
+    }
+
+    function _showCustomServerBar() {
+        if(customServerModalBar){
+            return;
+        }
+        // Show the search bar
+        const searchBarHTML =`<div style="display: flex;justify-content: end;align-items: baseline;">
+            <div style="margin-right: 5px;">
+                ${Strings.LIVE_DEV_SETTINGS_BANNER}
+            </div>
+            <button class="btn btn-mini live-preview-settings" style="margin-right: 5px;">
+                ${Strings.LIVE_DEV_SETTINGS}
+            </button>
+            <div class="close-icon" style="align-self: center;margin-left: 10px;margin-right: 5px;cursor: pointer;"
+                title="${Strings.CLOSE}">
+                <i class="fa-solid fa-xmark"></i>
+            </div>
+        </div>`;
+        customServerModalBar = new ModalBar(searchBarHTML);
+        const $modal = customServerModalBar.getRoot();
+        $modal.find(".live-preview-settings")
+            .click(()=>{
+                _showSettingsDialog()
+                    .then(()=>{
+                        if(LivePreviewSettings.isUsingCustomServer()){
+                            customServerModalBar && customServerModalBar.close();
+                            customServerModalBar = null;
+                            StateManager.set(STATE_CUSTOM_SERVER_BANNER_ACK, true, StateManager.PROJECT_CONTEXT);
+                        }
+                    });
+            });
+        $modal.find(".close-icon").click(()=>{
+            customServerModalBar && customServerModalBar.close();
+            customServerModalBar = null;
+            StateManager.set(STATE_CUSTOM_SERVER_BANNER_ACK, true, StateManager.PROJECT_CONTEXT);
+        });
     }
 
     AppInit.appReady(function () {
         if(Phoenix.isSpecRunnerWindow){
             return;
         }
+        panelShownAtStartup = !LivePreviewSettings.shouldShowLivePreviewAtStartup();
         _createExtensionPanel();
         StaticServer.init();
         LiveDevServerManager.registerServer({ create: _createStaticServer }, 5);
@@ -477,8 +746,12 @@ define(function (require, exports, module) {
         CommandManager.register(Strings.CMD_LIVE_FILE_PREVIEW,  Commands.FILE_LIVE_FILE_PREVIEW, function () {
             _toggleVisibilityOnClick();
         });
+        CommandManager.register(Strings.CMD_LIVE_FILE_PREVIEW_SETTINGS,
+            Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS, _showSettingsDialog);
         let fileMenu = Menus.getMenu(Menus.AppMenuBar.FILE_MENU);
         fileMenu.addMenuItem(Commands.FILE_LIVE_FILE_PREVIEW, "", Menus.AFTER, Commands.FILE_EXTENSION_MANAGER);
+        fileMenu.addMenuItem(Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS, "",
+            Menus.AFTER, Commands.FILE_LIVE_FILE_PREVIEW);
         fileMenu.addMenuDivider(Menus.BEFORE, Commands.FILE_LIVE_FILE_PREVIEW);
         LiveDevelopment.openLivePreview();
         LiveDevelopment.on(LiveDevelopment.EVENT_OPEN_PREVIEW_URL, _openLivePreviewURL);
@@ -491,15 +764,36 @@ define(function (require, exports, module) {
             // required in chrome, but we just keep it just for all platforms behaving the same.
             _loadPreview(true);
         });
-        StaticServer.on(StaticServer.EVENT_SERVER_READY, function (_evt, event) {
-            // We always show the live preview panel on startup if there is a preview file
-            StaticServer.getPreviewDetails().then(previewDetails =>{
-                if(previewDetails.URL && !panelShownOnce){
+
+        function refreshPreview() {
+            StaticServer.getPreviewDetails().then((previewDetails)=>{
+                _openReadmeMDIfFirstTime();
+                if(!LivePreviewSettings.shouldShowLivePreviewAtStartup()){
+                    return;
+                }
+                // we show the live preview
+                // in browser, we always show the live preview on startup even if its a no preview page
+                // Eg. in mac safari browser we show mac doesnt support live preview page in live preview.
+                if(previewDetails.URL && (isBrowser || !previewDetails.isNoPreview) && !panelShownAtStartup){
                     // only show if there is some file to preview and not the default no-preview preview on startup
                     _setPanelVisibility(true);
                 }
                 _loadPreview(true);
             });
+        }
+
+        let customServerRefreshedOnce = false;
+        StaticServer.on(StaticServer.EVENT_SERVER_READY, function (_evt, event) {
+            if(LivePreviewSettings.isUsingCustomServer() && customServerRefreshedOnce){
+                return;
+            }
+            customServerRefreshedOnce = true;
+            refreshPreview();
+        });
+        LivePreviewSettings.on(LivePreviewSettings.EVENT_SERVER_CHANGED, ()=>{
+            customLivePreviewBannerShown = false;
+            refreshPreview();
+            _customServerMetrics();
         });
 
         let consecutiveEmptyClientsCount = 0;

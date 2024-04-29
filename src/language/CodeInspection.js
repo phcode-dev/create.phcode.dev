@@ -255,6 +255,10 @@ define(function (require, exports, module) {
             return response.promise();
         }
 
+        providerList = providerList.filter(function (provider) {
+            return !provider.canInspect || provider.canInspect(file.fullPath);
+        });
+
         DocumentManager.getDocumentText(file)
             .done(function (fileText) {
                 var perfTimerInspector = PerfUtils.markStart("CodeInspection:\t" + file.fullPath),
@@ -284,6 +288,7 @@ define(function (require, exports, module) {
                                 runPromise.resolve(scanResult);
                             })
                             .catch(function (err) {
+                                err = err || new Error("Unknown error while inspecting "+ file.fullPath);
                                 PerfUtils.finalizeMeasurement(perfTimerProvider);
                                 var errError = {
                                     pos: {line: -1, col: 0},
@@ -305,7 +310,8 @@ define(function (require, exports, module) {
                                 message: StringUtils.format(Strings.LINTER_FAILED, provider.name, err),
                                 type: Type.ERROR
                             };
-                            console.error("[CodeInspection] Provider " + provider.name + " (sync) threw an error: " + err.stack);
+                            console.error("[CodeInspection] Provider " + provider.name +
+                                " (sync) threw an error: " + err && (err.stack || err));
                             runPromise.resolve({errors: [errError]});
                         }
                     }
@@ -394,21 +400,7 @@ define(function (require, exports, module) {
             console.warn("CodeInspector: Invalid error position: ", error);
             return false;
         }
-        // now we only apply a style if there is not already a higher priority style applied to it.
-        // Ie. If an error style is applied, we don't apply an info style over it as error takes precedence.
-        let markings = editor.findMarksAt(error.pos, CODE_MARK_TYPE_INSPECTOR);
-        let MarkToApplyPriority = _getMarkTypePriority(error.type);
-        let shouldMark = true;
-        for(let mark of markings){
-            let markTypePriority = _getMarkTypePriority(mark.type);
-            if(markTypePriority<=MarkToApplyPriority){
-                mark.clear();
-            } else {
-                // there's something with a higher priority marking the token
-                shouldMark = false;
-            }
-        }
-        return shouldMark;
+        return true;
     }
 
     /**
@@ -498,13 +490,13 @@ define(function (require, exports, module) {
             let codeInspectionMarks = editor.findMarksAt(pos, CODE_MARK_TYPE_INSPECTOR) || [];
             let hoverMessage = '';
             for(let mark of codeInspectionMarks){
-                hoverMessage = `${hoverMessage}${mark.message}\n`;
+                hoverMessage = `${hoverMessage}${mark.message}<br/>`;
             }
             if(hoverMessage){
                 resolve({
                     start: {line: pos.line, ch: token.start},
                     end: {line: pos.line, ch: token.end},
-                    content: hoverMessage
+                    content: `<div class="code-inspection-item">${hoverMessage}</div>`
                 });
                 return;
             }
@@ -532,8 +524,6 @@ define(function (require, exports, module) {
             for (let resultProvider of resultProviderEntries) {
                 let errors = (resultProvider.result && resultProvider.result.errors) || [];
                 for (let error of errors) {
-                    // todo: add error.message on hover
-                    // add gutter markers
                     let line = error.pos.line || 0;
                     let ch = error.pos.ch || 0;
                     let gutterMessage = gutterErrorMessages[line] || [];
@@ -541,7 +531,13 @@ define(function (require, exports, module) {
                     gutterErrorMessages[line] = gutterMessage;
                     // add squiggly lines
                     if (_shouldMarkTokenAtPosition(editor, error)) {
-                        let mark = editor.markToken(CODE_MARK_TYPE_INSPECTOR, error.pos, _getMarkOptions(error));
+                        let mark;
+                        if(error.endPos){
+                            mark = editor.markText(CODE_MARK_TYPE_INSPECTOR, error.pos, error.endPos,
+                                _getMarkOptions(error));
+                        } else {
+                            mark = editor.markToken(CODE_MARK_TYPE_INSPECTOR, error.pos, _getMarkOptions(error));
+                        }
                         mark.type = error.type;
                         mark.message = error.message;
                     }
@@ -568,8 +564,12 @@ define(function (require, exports, module) {
             return;
         }
 
-        var currentDoc = DocumentManager.getCurrentDocument(),
+        let currentDoc = DocumentManager.getCurrentDocument(),
             providerList = currentDoc && getProvidersForPath(currentDoc.file.fullPath);
+
+        providerList = providerList && providerList.filter(function (provider) {
+            return !provider.canInspect || provider.canInspect(currentDoc.file.fullPath);
+        });
 
         if (providerList && providerList.length) {
             var numProblems = 0;

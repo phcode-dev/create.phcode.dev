@@ -59,6 +59,8 @@ define(function (require, exports, module) {
     require("thirdparty/CodeMirror/addon/search/searchcursor");
     require("thirdparty/CodeMirror/addon/selection/active-line");
     require("thirdparty/CodeMirror/addon/selection/mark-selection");
+    require("thirdparty/CodeMirror/addon/display/rulers");
+    require("thirdparty/CodeMirror/addon/comment/comment");
     require("thirdparty/CodeMirror/keymap/sublime");
 
     require("utils/EventDispatcher");
@@ -419,7 +421,7 @@ define(function (require, exports, module) {
         // Add the platform (mac, win or linux) to the body tag so we can have platform-specific CSS rules
         const $body = $("body");
         $body.addClass("platform-" + brackets.platform);
-        if(Phoenix.browser.isTauri){
+        if(Phoenix.isNativeApp){
             $body.addClass("tauri");
         }
 
@@ -445,6 +447,11 @@ define(function (require, exports, module) {
             // This call to syncOpenDocuments() *should* be a no-op now that we have
             // file watchers, but is still here as a safety net.
             FileSyncManager.syncOpenDocuments();
+            if(!Phoenix.browser.isTauri) { // dont do this in desktop builds as native fs watchers will take care of external changes
+                // Refresh the project tree when the window comes back into focus
+                // Changes made outside of Phoenix Code will be updated when the user returns
+                ProjectManager.refreshFileTree();
+              }
         });
 
         // Prevent unhandled middle button clicks from triggering native behavior

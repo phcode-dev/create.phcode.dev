@@ -34,6 +34,7 @@ define(function (require, exports, module) {
         Mustache = require("thirdparty/mustache/mustache"),
         FileSystem = require("filesystem/FileSystem"),
         EventDispatcher = require("utils/EventDispatcher"),
+        LivePreviewSettings  = require("./LivePreviewSettings"),
         ProjectManager = require("project/ProjectManager"),
         EventManager = require("utils/EventManager"),
         CommandManager     = require("command/CommandManager"),
@@ -564,10 +565,11 @@ define(function (require, exports, module) {
         }
     }
 
-    function redirectAllTabs(newURL) {
+    function redirectAllTabs(newURL, force) {
         liveServerConnector.execPeer('navRedirectAllTabs', {
             type: 'REDIRECT_PAGE',
-            URL: getTabPopoutURL(newURL)
+            URL: getTabPopoutURL(newURL),
+            force
         });
     }
 
@@ -600,7 +602,7 @@ define(function (require, exports, module) {
         // we tag all externally opened urls with query string parameter phcodeLivePreview="true" to address
         // #LIVE_PREVIEW_TAB_NAVIGATION_RACE_FIX
         openURL.searchParams.set(PHCODE_LIVE_PREVIEW_QUERY_PARAM, "true");
-        if(utils.isHTMLFile(openURL.pathname) && url.startsWith(_staticServerInstance.getBaseUrl())){
+        if(_staticServerInstance && utils.isHTMLFile(openURL.pathname) && url.startsWith(_staticServerInstance.getBaseUrl())){
             // this is a live preview html with in built navigation, so we can sever it as is.
             return openURL.href;
         }
@@ -622,7 +624,7 @@ define(function (require, exports, module) {
             try {
                 const currentDocument = DocumentManager.getCurrentDocument();
                 const currentFile = currentDocument? currentDocument.file : ProjectManager.getSelectedItem();
-                if(!currentFile || !_staticServerInstance || !_staticServerInstance.getBaseUrl()){
+                if(!currentFile){
                     resolve({
                         URL: getNoPreviewURL(),
                         isNoPreview: true
@@ -646,7 +648,37 @@ define(function (require, exports, module) {
                 if(fullPath.startsWith("http://") || fullPath.startsWith("https://")){
                     httpFilePath = fullPath;
                 }
-                if(utils.isPreviewableFile(fullPath)){
+                const shouldUseInbuiltPreview = utils.isMarkdownFile(fullPath) || utils.isSVG(fullPath);
+                const customServeURL = LivePreviewSettings.getCustomServerConfig(fullPath);
+                if(customServeURL){
+                    const relativePath = path.relative(projectRoot, fullPath);
+                    resolve({
+                        URL: customServeURL,
+                        filePath: relativePath,
+                        fullPath: fullPath,
+                        isMarkdownFile: utils.isMarkdownFile(fullPath),
+                        isHTMLFile: utils.isHTMLFile(fullPath),
+                        isCustomServer: true,
+                        serverSupportsHotReload: LivePreviewSettings.serverSupportsHotReload()
+                    });
+                    return;
+                } else if(LivePreviewSettings.isUsingCustomServer() && !customServeURL && !shouldUseInbuiltPreview){
+                    // this is the case where the file is outside of a custom configured server root (E. `www/`)
+                    // like `notServed/Path.html`. For markdown and SVG, we will still use the inbuilt live preview.
+                    resolve({
+                        URL: getNoPreviewURL(Strings.DESCRIPTION_LIVEDEV_EXCLUDED,
+                            StringUtils.format(Strings.DESCRIPTION_LIVEDEV_NO_PREVIEW_EXCLUDED,
+                                LivePreviewSettings.getCustomServeRoot())),
+                        isNoPreview: true
+                    });
+                    return;
+                } else if(!_staticServerInstance || !_staticServerInstance.getBaseUrl()){
+                    resolve({
+                        URL: getNoPreviewURL(),
+                        isNoPreview: true
+                    });
+                    return;
+                } else if(utils.isPreviewableFile(fullPath)){
                     const relativeFilePath = httpFilePath || path.relative(projectRoot, fullPath);
                     let URL = httpFilePath || decodeURI(_staticServerInstance.pathToUrl(fullPath));
                     resolve({
@@ -656,10 +688,12 @@ define(function (require, exports, module) {
                         isMarkdownFile: utils.isMarkdownFile(fullPath),
                         isHTMLFile: utils.isHTMLFile(fullPath)
                     });
+                    return;
                 } else {
                     const currentLivePreviewDetails = LiveDevelopment.getLivePreviewDetails();
                     if(currentLivePreviewDetails && currentLivePreviewDetails.liveDocument
-                        &&currentLivePreviewDetails.liveDocument.isRelated(fullPath)){
+                        && currentLivePreviewDetails.liveDocument.isRelated
+                        && currentLivePreviewDetails.liveDocument.isRelated(fullPath)){
                         fullPath = currentLivePreviewDetails.liveDocument.doc.file.fullPath;
                         const relativeFilePath = httpFilePath || path.relative(projectRoot, fullPath);
                         let URL = httpFilePath || decodeURI(_staticServerInstance.pathToUrl(fullPath));
@@ -670,8 +704,13 @@ define(function (require, exports, module) {
                             isMarkdownFile: utils.isMarkdownFile(fullPath),
                             isHTMLFile: utils.isHTMLFile(fullPath)
                         });
+                        return;
                     }
                 }
+                resolve({
+                    URL: getNoPreviewURL(),
+                    isNoPreview: true
+                });
             }catch (e) {
                 reject(e);
             }

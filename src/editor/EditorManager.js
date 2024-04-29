@@ -825,4 +825,8 @@ define(function (require, exports, module) {
     exports.focusEditor                   = focusEditor;
     exports.getCurrentlyViewedPath        = getCurrentlyViewedPath;
     exports.setEditorHolder               = setEditorHolder;
+
+    if(location.origin === "http://localhost:8000"){
+        window.EditorManager = exports; // this is for quick editor queries during development in browser console
+    }
 });

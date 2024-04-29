@@ -103,7 +103,7 @@ function _setupVFS(fsLib, pathLib){
          * @returns {string|null}
          */
         getPathForVirtualServingURL: function (fullURL) {
-            if(Phoenix.browser.isTauri) {
+            if(Phoenix.isNativeApp) {
                 if(fullURL.startsWith(tauriAssetServeBaseURL)){
                     const assetRelativePath = decodeURIComponent(fullURL.replace(tauriAssetServeBaseURL, ""))
                         .replace(/\\/g, "/"); // replace windows path forward slashes \ to /
@@ -117,7 +117,7 @@ function _setupVFS(fsLib, pathLib){
             return null;
         },
         getVirtualServingURLForPath: function (fullPath) {
-            if(Phoenix.browser.isTauri) {
+            if(Phoenix.isNativeApp) {
                 if(fullPath.startsWith(tauriAssetServeDir)){
                     const platformPath = fs.getTauriPlatformPath(fullPath)
                         .replace(/\\/g, "/"); // windows style paths to unix style c:\x\y to c:/x/y
@@ -199,7 +199,7 @@ function _tryCreateDefaultProject() {
 }
 
 async function setupAppSupportAndExtensionsDir() {
-    if(Phoenix.browser.isTauri) {
+    if(Phoenix.isNativeApp) {
         appSupportDIR = fs.getTauriVirtualPath(window._tauriBootVars.appLocalDir);
         if(!appSupportDIR.endsWith("/")){
             appSupportDIR = `${appSupportDIR}/`;
@@ -228,7 +228,7 @@ async function setupAppSupportAndExtensionsDir() {
 }
 
 async function setupDocumentsDir() {
-    if(Phoenix.browser.isTauri) {
+    if(Phoenix.isNativeApp) {
         documentsDIR = fs.getTauriVirtualPath(window._tauriBootVars.documentDir);
         if(!documentsDIR.endsWith("/")){
             documentsDIR = `${documentsDIR}/`;
@@ -245,7 +245,7 @@ async function setupDocumentsDir() {
 }
 
 async function setupTempDir() {
-    if(Phoenix.browser.isTauri) {
+    if(Phoenix.isNativeApp) {
         tempDIR = fs.getTauriVirtualPath(window._tauriBootVars.tempDir);
         if(!tempDIR.endsWith("/")){
             tempDIR = `${tempDIR}/`;
@@ -276,7 +276,10 @@ const _createAppDirs = async function () {
 
 
 const CORE_LIB_GUARD_INTERVAL = 5000;
-const _FS_ERROR_MESSAGE = 'Oops. Phoenix could not be started due to missing file system library.';
+const _FS_ERROR_MESSAGE = (Phoenix.isNativeApp && Phoenix.platform === "mac") ?
+    'Oops. Could not start due to missing file system library.\n\nPhoenix Code requires `macOS 12 Monterey` or higher' :
+    'Oops. Could not start due to missing file system library.' +
+    '\n\nPlease use a modern browser (released within the last 4 years).';
 export default function initVFS() {
     if(!window.fs || !window.path || !window.Phoenix){
         window.alert(_FS_ERROR_MESSAGE);

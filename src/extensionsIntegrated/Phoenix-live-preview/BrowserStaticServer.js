@@ -36,7 +36,9 @@ define(function (require, exports, module) {
         EventDispatcher = require("utils/EventDispatcher"),
         CommandManager     = require("command/CommandManager"),
         Commands           = require("command/Commands"),
+        StringUtils       = require("utils/StringUtils"),
         EventManager = require("utils/EventManager"),
+        LivePreviewSettings  = require("./LivePreviewSettings"),
         ProjectManager = require("project/ProjectManager"),
         Strings = require("strings"),
         utils = require('./utils'),
@@ -111,10 +113,13 @@ define(function (require, exports, module) {
             encodeURIComponent(`${Strings.DESCRIPTION_LIVEDEV_MAIN_SPAN}`);
     }
 
-    function getNoPreviewURL(){
+    function getNoPreviewURL(
+        heading = Strings.DESCRIPTION_LIVEDEV_NO_PREVIEW,
+        message = Strings.DESCRIPTION_LIVEDEV_NO_PREVIEW_DETAILS
+    ){
         return `${window.Phoenix.baseURL}assets/phoenix-splash/no-preview.html?jsonInput=`+
-            encodeURIComponent(`{"heading":"${Strings.DESCRIPTION_LIVEDEV_NO_PREVIEW}",`
-                +`"details":"${Strings.DESCRIPTION_LIVEDEV_NO_PREVIEW_DETAILS}"}`);
+            encodeURIComponent(`{"heading":"${heading}",`
+                +`"details":"${message}"}`);
     }
 
     function _isLivePreviewSupported() {
@@ -122,7 +127,7 @@ define(function (require, exports, module) {
         // live previews into its own domain apart from phcode.dev. Since safari doesn't support this, we are left
         // with using phcode.dev domain directly for live previews. That is a large attack surface for untrusted
         // code execution. so we will disable live previews in safari instead of shipping a security vulnerability.
-        return Phoenix.browser.isTauri || !(Phoenix.browser.desktop.isSafari || Phoenix.browser.mobile.isIos);
+        return Phoenix.isNativeApp || !(Phoenix.browser.desktop.isSafari || Phoenix.browser.mobile.isIos);
     }
 
     /**
@@ -151,7 +156,31 @@ define(function (require, exports, module) {
                     if(fullPath.startsWith("http://") || fullPath.startsWith("https://")){
                         httpFilePath = fullPath;
                     }
-                    if(utils.isPreviewableFile(fullPath)){
+                    const customServeURL = LivePreviewSettings.getCustomServerConfig(fullPath);
+                    const shouldUseInbuiltPreview = utils.isMarkdownFile(fullPath) || utils.isSVG(fullPath);
+                    if(customServeURL){
+                        const relativePath = path.relative(projectRoot, fullPath);
+                        resolve({
+                            URL: customServeURL,
+                            filePath: relativePath,
+                            fullPath: fullPath,
+                            isMarkdownFile: utils.isMarkdownFile(fullPath),
+                            isHTMLFile: utils.isHTMLFile(fullPath),
+                            isCustomServer: true,
+                            serverSupportsHotReload: LivePreviewSettings.serverSupportsHotReload()
+                        });
+                        return;
+                    } else if(LivePreviewSettings.isUsingCustomServer() && !customServeURL && !shouldUseInbuiltPreview){
+                        // this is the case where the file is outside of a custom configured server root (E. `www/`)
+                        // like `notServed/Path.html`. For markdown and SVG, we will still use the inbuilt live preview.
+                        resolve({
+                            URL: getNoPreviewURL(Strings.DESCRIPTION_LIVEDEV_EXCLUDED,
+                                StringUtils.format(Strings.DESCRIPTION_LIVEDEV_NO_PREVIEW_EXCLUDED,
+                                    LivePreviewSettings.getCustomServeRoot())),
+                            isNoPreview: true
+                        });
+                        return;
+                    }  else if(utils.isPreviewableFile(fullPath)){
                         const filePath = httpFilePath || path.relative(projectRoot, fullPath);
                         let URL = httpFilePath || `${projectRootUrl}${filePath}`;
                         resolve({
@@ -165,7 +194,8 @@ define(function (require, exports, module) {
                     } else {
                         const currentLivePreviewDetails = LiveDevelopment.getLivePreviewDetails();
                         if(currentLivePreviewDetails && currentLivePreviewDetails.liveDocument
-                            &&currentLivePreviewDetails.liveDocument.isRelated(fullPath)){
+                            && currentLivePreviewDetails.liveDocument.isRelated
+                            && currentLivePreviewDetails.liveDocument.isRelated(fullPath)){
                             fullPath = currentLivePreviewDetails.liveDocument.doc.file.fullPath;
                             const filePath = path.relative(projectRoot, fullPath);
                             let URL = `${projectRootUrl}${filePath}`;
@@ -196,6 +226,9 @@ define(function (require, exports, module) {
             window.logger.livePreview.log("Live Preview navigator channel: Phoenix received event from tab: ", event);
             const type = event.data.type;
             switch (type) {
+            case 'GET_INITIAL_URL':
+                _sendInitialURL(event.data.pageLoaderID);
+                return;
             case 'TAB_LOADER_ONLINE':
                 livePreviewTabs.set(event.data.pageLoaderID, {
                     lastSeen: new Date(),
@@ -651,10 +684,24 @@ define(function (require, exports, module) {
         _sendToLivePreviewServerTabs(message);
     }
 
-    function redirectAllTabs(newURL) {
+    let currentPopoutURL;
+    function _sendInitialURL(pageLoaderID) {
+        if(!currentPopoutURL){
+            return;
+        }
+        navigatorChannel.postMessage({
+            type: 'INITIAL_URL_NAVIGATE',
+            URL: currentPopoutURL,
+            pageLoaderID: pageLoaderID
+        });
+    }
+
+    function redirectAllTabs(newURL, force) {
+        currentPopoutURL = newURL;
         navigatorChannel.postMessage({
             type: 'REDIRECT_PAGE',
-            URL: newURL
+            URL: newURL,
+            force
         });
     }
 

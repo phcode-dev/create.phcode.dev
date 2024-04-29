@@ -22,10 +22,6 @@
 
 define(function (require, exports, module) {
     const NotificationUI = require("widgets/NotificationUI"),
-        LiveDevelopment  = require("LiveDevelopment/main"),
-        ExtensionInterface = require("utils/ExtensionInterface"),
-        WorkspaceManager = require("view/WorkspaceManager"),
-        MainViewManager  = require("view/MainViewManager"),
         Commands = require("command/Commands"),
         Strings = require("strings"),
         Menus = require("command/Menus"),
@@ -39,10 +35,14 @@ define(function (require, exports, module) {
         NOTIFICATION_BACKOFF = 10000,
         GUIDED_TOUR_LOCAL_STORAGE_KEY = "guidedTourActions";
 
-    const GITHUB_STARS_POPUP_TIME = 120000, // 2 min
-        POWER_USER_SURVEY_TIME = 180000, // 3 min
+    const surveyLinksURL = "https://updates.phcode.io/surveys.json";
+
+    // All popup notifications will show immediately on boot, we don't want to interrupt user amidst his work
+    // by showing it at a later point in time.
+    const BOOT_DIALOG_DELAY = 2000,
         GENERAL_SURVEY_TIME = 600000, // 10 min
-        TWO_WEEKS_IN_DAYS = 14,
+        ONE_MONTH_IN_DAYS = 30,
+        POWER_USER_SURVEY_INTERVAL_DAYS = 35,
         USAGE_COUNTS_KEY    = "healthDataUsage"; // private to phoenix, set from health data extension
 
     const userAlreadyDidAction = PhStore.getItem(GUIDED_TOUR_LOCAL_STORAGE_KEY)
@@ -109,83 +109,19 @@ define(function (require, exports, module) {
         if(userAlreadyDidAction.newProjectShown){
             return;
         }
-        function _showNotification() {
-            if(currentlyShowingNotification){
-                setTimeout(_showNotification, NOTIFICATION_BACKOFF);
-                return;
-            }
-            userAlreadyDidAction.newProjectShown =  true;
-            PhStore.setItem(GUIDED_TOUR_LOCAL_STORAGE_KEY, JSON.stringify(userAlreadyDidAction));
-            Metrics.countEvent(Metrics.EVENT_TYPE.UI, "guide", "newProj");
-            currentlyShowingNotification = NotificationUI.createFromTemplate(Strings.NEW_PROJECT_NOTIFICATION,
-                "newProject", {
-                    allowedPlacements: ['top', 'bottom'],
-                    autoCloseTimeS: 15,
-                    dismissOnClick: true}
-            );
-            currentlyShowingNotification.done(()=>{
-                currentlyShowingNotification = null;
-            });
-            MainViewManager.off(MainViewManager.EVENT_CURRENT_FILE_CHANGE, _showNotification);
-        }
-        MainViewManager.on(MainViewManager.EVENT_CURRENT_FILE_CHANGE, _showNotification);
-    }
-
-    // 1. When user clicks on live preview, we show "click here to popout live preview". only shown once.
-    function _showPopoutLivePreviewNotification() {
-        ExtensionInterface.waitAndGetExtensionInterface(
-            ExtensionInterface._DEFAULT_EXTENSIONS_INTERFACE_NAMES.PHOENIX_LIVE_PREVIEW).then((livePreviewExtension)=>{
-            function _showNotification() {
-                // legacy key. cant change without triggering the user base
-                let notificationKey = 'livePreviewPopoutShown', version = "v1";
-                let popoutMessageShown = PhStore.getItem(notificationKey);
-                if(popoutMessageShown === version){
-                    // already shown
-                    LiveDevelopment.off(LiveDevelopment.EVENT_LIVE_PREVIEW_CLICKED, _showNotification);
-                    return;
-                }
-                if(currentlyShowingNotification){
-                    return;
-                }
-                if(WorkspaceManager.isPanelVisible(livePreviewExtension.LIVE_PREVIEW_PANEL_ID)){
-                    Metrics.countEvent(Metrics.EVENT_TYPE.UI, "guide", "lp_popout");
-                    currentlyShowingNotification = NotificationUI.createFromTemplate(Strings.GUIDED_LIVE_PREVIEW_POPOUT,
-                        "livePreviewPopoutButton", {
-                            allowedPlacements: ['bottom'],
-                            autoCloseTimeS: 15,
-                            dismissOnClick: true}
-                    );
-                    currentlyShowingNotification.done(()=>{
-                        currentlyShowingNotification = null;
-                    });
-                    PhStore.setItem(notificationKey, version);
-                }
-                LiveDevelopment.off(LiveDevelopment.EVENT_LIVE_PREVIEW_CLICKED, _showNotification);
-            }
-            LiveDevelopment.on(LiveDevelopment.EVENT_LIVE_PREVIEW_CLICKED, _showNotification);
-        });
-    }
-
-    // only shown once on first boot
-    // order: 2. Then after user opens default project, we show "edit code for live preview popup"
-    function _showLivePreviewNotification() {
-        // legacy reasons live preview notification is called new project notification.
-        const livePreviewNotificationKey = "newProjectNotificationShown";
-        const livePreviewNotificationShown = PhStore.getItem(livePreviewNotificationKey);
-        if(livePreviewNotificationShown){
-            return;
-        }
         if(currentlyShowingNotification){
-            setTimeout(_showLivePreviewNotification, NOTIFICATION_BACKOFF);
+            setTimeout(_showNewProjectNotification, NOTIFICATION_BACKOFF);
             return;
         }
-        currentlyShowingNotification = NotificationUI.createFromTemplate(Strings.GUIDED_LIVE_PREVIEW,
-            "main-toolbar", {
-                allowedPlacements: ['left'],
+        userAlreadyDidAction.newProjectShown =  true;
+        PhStore.setItem(GUIDED_TOUR_LOCAL_STORAGE_KEY, JSON.stringify(userAlreadyDidAction));
+        Metrics.countEvent(Metrics.EVENT_TYPE.UI, "guide", "newProj");
+        currentlyShowingNotification = NotificationUI.createFromTemplate(Strings.NEW_PROJECT_NOTIFICATION,
+            "newProject", {
+                allowedPlacements: ['top', 'bottom'],
                 autoCloseTimeS: 15,
                 dismissOnClick: true}
         );
-        PhStore.setItem(livePreviewNotificationKey, "true");
         currentlyShowingNotification.done(()=>{
             currentlyShowingNotification = null;
         });
@@ -207,7 +143,7 @@ define(function (require, exports, module) {
             }
             window.twttr.events.bind('click', function (ev) {
                 Metrics.countEvent(Metrics.EVENT_TYPE.USER, "notify", "twit.click", 1);
-                if(Phoenix.browser.isTauri) {
+                if(Phoenix.isNativeApp) {
                     // hyperlinks wont work in tauri, so we have to use tauri apis
                     Phoenix.app.openURLInDefaultBrowser(
                         'https://twitter.com/intent/tweet?screen_name=phcodedev&ref_src=twsrc%5Etfw');
@@ -228,6 +164,14 @@ define(function (require, exports, module) {
                              data-show-count="true"
                              title="Star phcode.dev on GitHub"
                              aria-label="Star phcode-dev/phoenix on GitHub">Star</a>
+                             <a class="github-button"
+                             href="https://github.com/sponsors/phcode-dev"
+                             data-color-scheme="no-preference: dark; light: dark; dark: dark;"
+                             data-icon="octicon-heart"
+                             data-size="large"
+                             data-show-count="true"
+                             title="Star phcode.dev on GitHub"
+                             aria-label="Sponsor @phcode-dev on GitHub">Sponsor</a>
                            <script async defer src="https://buttons.github.io/buttons.js"></script>
                         </div>
                        ${Strings.GITHUB_STARS_POPUP_TWITTER}
@@ -241,7 +185,7 @@ define(function (require, exports, module) {
                     </div>`);
         notification.find(".gtstarph").click(()=>{
             Metrics.countEvent(Metrics.EVENT_TYPE.USER, "notify", "star.click", 1);
-            if(Phoenix.browser.isTauri) {
+            if(Phoenix.isNativeApp) {
                 // hyperlinks wont work in tauri, so we have to use tauri apis
                 Phoenix.app.openURLInDefaultBrowser(
                     'https://github.com/phcode-dev/phoenix');
@@ -253,26 +197,30 @@ define(function (require, exports, module) {
     }
 
     function _showRequestStarsPopup() {
+        if(Phoenix.firstBoot){
+            // on first boot we don't show the `enjoying phoenix?` popup as user needs more time to evaluate.
+            // GitHub stars/tweet situation isn't improving either. So we show this at the second launch so that we
+            // the users like the product to revisit and then, every 30 days.
+            return;
+        }
         let lastShownDate = userAlreadyDidAction.lastShownGithubStarsDate;
         let nextShowDate = new Date(lastShownDate);
-        nextShowDate.setUTCDate(nextShowDate.getUTCDate() + TWO_WEEKS_IN_DAYS);
+        nextShowDate.setUTCDate(nextShowDate.getUTCDate() + ONE_MONTH_IN_DAYS);
         let currentDate = new Date();
         if(!lastShownDate || currentDate >= nextShowDate){
-            setTimeout(()=>{
-                Metrics.countEvent(Metrics.EVENT_TYPE.USER, "notify", "star", 1);
-                _openStarsPopup();
-                userAlreadyDidAction.lastShownGithubStarsDate = Date.now();
-                PhStore.setItem(GUIDED_TOUR_LOCAL_STORAGE_KEY, JSON.stringify(userAlreadyDidAction));
-            }, GITHUB_STARS_POPUP_TIME);
+            Metrics.countEvent(Metrics.EVENT_TYPE.USER, "notify", "star", 1);
+            _openStarsPopup();
+            userAlreadyDidAction.lastShownGithubStarsDate = Date.now();
+            PhStore.setItem(GUIDED_TOUR_LOCAL_STORAGE_KEY, JSON.stringify(userAlreadyDidAction));
         }
     }
 
-    function _showGeneralSurvey() {
+    function _showGeneralSurvey(surveyURL) {
         setTimeout(()=>{
             let surveyVersion = 6; // increment this if you want to show this again
             var templateVars = {
                 Strings: Strings,
-                surveyURL: "https://s.surveyplanet.com/g837j5k9"
+                surveyURL
             };
             if(userAlreadyDidAction.generalSurveyShownVersion !== surveyVersion){
                 Metrics.countEvent(Metrics.EVENT_TYPE.USER, "survey", "generalShown", 1);
@@ -301,33 +249,41 @@ define(function (require, exports, module) {
         return totalUsageDays >= 3 || (totalUsageMinutes/60) >= 8;
     }
 
-    function _openPowerUserSurvey() {
-        Metrics.countEvent(Metrics.EVENT_TYPE.USER, "survey", "powerShown", 1);
-        const templateVars = {
-            Strings: Strings,
-            surveyURL: "https://s.surveyplanet.com/2dgk0hbn"
-        };
-        Dialogs.showModalDialogUsingTemplate(Mustache.render(SurveyTemplate, templateVars));
-    }
-
-    function _showPowerUserSurvey() {
+    function _showPowerUserSurvey(surveyURL) {
         if(_isPowerUser()) {
             Metrics.countEvent(Metrics.EVENT_TYPE.USER, "power", "user", 1);
             let lastShownDate = userAlreadyDidAction.lastShownPowerSurveyDate;
             let nextShowDate = new Date(lastShownDate);
-            nextShowDate.setUTCDate(nextShowDate.getUTCDate() + TWO_WEEKS_IN_DAYS);
+            nextShowDate.setUTCDate(nextShowDate.getUTCDate() + POWER_USER_SURVEY_INTERVAL_DAYS);
             let currentDate = new Date();
             if(currentDate < nextShowDate){
                 return;
             }
             setTimeout(()=>{
-                Metrics.countEvent(Metrics.EVENT_TYPE.USER, "notify", "powerSurvey", 1);
-                let $content = $(Strings.POWER_USER_POPUP_TEXT);
-                $content.find("a").click(_openPowerUserSurvey);
-                NotificationUI.createToastFromTemplate(Strings.POWER_USER_POPUP_TITLE, $content);
+                Metrics.countEvent(Metrics.EVENT_TYPE.USER, "survey", "powerShown", 1);
+                const templateVars = {
+                    Strings: Strings,
+                    surveyURL
+                };
+                Dialogs.showModalDialogUsingTemplate(Mustache.render(SurveyTemplate, templateVars));
                 userAlreadyDidAction.lastShownPowerSurveyDate = Date.now();
                 PhStore.setItem(GUIDED_TOUR_LOCAL_STORAGE_KEY, JSON.stringify(userAlreadyDidAction));
-            }, POWER_USER_SURVEY_TIME);
+            }, BOOT_DIALOG_DELAY);
+        }
+    }
+
+    async function _showSurveys() {
+        try {
+            if(!navigator.onLine){
+                return;
+            }
+            let surveyJSON = await fetch(surveyLinksURL);
+            surveyJSON = await surveyJSON.json();
+            surveyJSON.newUser && _showGeneralSurvey(surveyJSON.newUser);
+            surveyJSON.powerUser && _showPowerUserSurvey(surveyJSON.powerUser);
+        } catch (e) {
+            console.error("Error fetching survey link", surveyLinksURL);
+            Metrics.countEvent(Metrics.EVENT_TYPE.USER, "survey", "fetchError", 1);
         }
     }
 
@@ -337,12 +293,9 @@ define(function (require, exports, module) {
             return;
         }
         tourStarted = true;
-        _showLivePreviewNotification();
-        _showPopoutLivePreviewNotification();
         _showNewProjectNotification();
         _showBeautifyNotification();
         _showRequestStarsPopup();
-        _showGeneralSurvey();
-        _showPowerUserSurvey();
+        _showSurveys();
     };
 });

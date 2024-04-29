@@ -43,6 +43,22 @@ window.jsPromise = function (jqueryOrJSPromise) {
 };
 window.deferredToPromise = window.jsPromise;
 
+/**
+ * A safe way to return null on promise fail. This will never reject or throw.
+ * @param promise
+ * @param {string} logError - If a string is passed in, will log the error to console.
+ * @return {*}
+ */
+window.catchToNull = function (promise, logError) {
+    return new Promise(resolve=>{
+        promise.then(resolve)
+            .catch((err)=>{
+                logError && console.error(logError, err);
+                resolve(null);
+            });
+    });
+};
+
 // splash screen updates for initial install which could take time, or slow networks.
 let trackedScriptCount = 0;
 function _setSplashScreenStatusUpdate(message1, message2) {
@@ -88,7 +104,7 @@ const callback = function(mutationsList) {
 const mainScripts = document.getElementById('main-scripts-head');
 const config = { childList: true};
 
-if(!Phoenix.browser.isTauri) {
+if(!Phoenix.isNativeApp) {
     // in tauri, there is no splash screen, so we dont do this.
     // Create an observer instance linked to the callback function
     window.scriptObserver = new MutationObserver(callback);

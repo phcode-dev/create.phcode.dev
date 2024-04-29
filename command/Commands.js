@@ -51,6 +51,7 @@ define(function (require, exports, module) {
     exports.FILE_CLOSE_LIST             = "file.close_list";            // DocumentCommandHandlers.js   handleFileCloseList()
     exports.FILE_OPEN_DROPPED_FILES     = "file.openDroppedFiles";      // DragAndDrop.js               openDroppedFiles()
     exports.FILE_LIVE_FILE_PREVIEW      = "file.liveFilePreview";       // LiveDevelopment/main.js      _handleGoLiveCommand()
+    exports.FILE_LIVE_FILE_PREVIEW_SETTINGS = "file.liveFilePreviewSettings";       // LiveDevelopment/main.js      _handleGoLiveCommand()
     exports.TOGGLE_LIVE_PREVIEW_MB_MODE = "file.toggleLivePreviewMB";   // LiveDevelopment/main.js      _toggleLivePreviewMultiBrowser()
     exports.CMD_RELOAD_LIVE_PREVIEW     = "file.reloadLivePreview";     // LiveDevelopment/main.js      _handleReloadLivePreviewCommand()
     exports.FILE_LIVE_HIGHLIGHT         = "file.previewHighlight";      // LiveDevelopment/main.js      _handlePreviewHighlightCommand()
@@ -125,6 +126,7 @@ define(function (require, exports, module) {
     exports.TOGGLE_LINE_NUMBERS         = "view.toggleLineNumbers";     // EditorOptionHandlers.js      _getToggler()
     exports.TOGGLE_ACTIVE_LINE          = "view.toggleActiveLine";      // EditorOptionHandlers.js      _getToggler()
     exports.TOGGLE_WORD_WRAP            = "view.toggleWordWrap";        // EditorOptionHandlers.js      _getToggler()
+    exports.TOGGLE_RULERS               = "view.toggleRulers";          // EditorOptionHandlers.js
     exports.TOGGLE_SEARCH_AUTOHIDE      = "view.toggleSearchAutoHide";  // EditorOptionHandlers.js      _getToggler()
 
     exports.CMD_OPEN                        = "cmd.open";
@@ -159,7 +161,8 @@ define(function (require, exports, module) {
     exports.HELP_HOMEPAGE               = "help.homepage";              // HelpCommandHandlers.js       _handleLinkMenuItem()
     exports.HELP_TWITTER                = "help.twitter";               // HelpCommandHandlers.js       _handleLinkMenuItem()
     exports.HELP_TOGGLE_SHORTCUTS_PANEL = "help.toggleShortcuts";       // shortcuts integrated extension
-    exports.HELP_CHECK_UPDATES          = "help.checkUpdates";       // shortcuts integrated extension
+    exports.HELP_CHECK_UPDATES          = "help.checkUpdates";          // shortcuts integrated extension
+    exports.HELP_AUTO_UPDATE            = "help.autoUpdate";             // shortcuts integrated extension
 
     // Working Set Configuration
     exports.CMD_WORKINGSET_SORT_BY_ADDED  = "cmd.sortWorkingSetByAdded";     // WorkingSetSort.js       _handleSort()

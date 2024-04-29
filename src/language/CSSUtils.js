@@ -20,6 +20,7 @@
  */
 
 /*jslint regexp: true */
+/*global jsPromise, catchToNull, path*/
 
 /**
  * Set of utilities for simple parsing of CSS text.
@@ -30,22 +31,21 @@ define(function (require, exports, module) {
     var CodeMirror          = require("thirdparty/CodeMirror/lib/codemirror"),
         Async               = require("utils/Async"),
         DocumentManager     = require("document/DocumentManager"),
+        AppInit             = require("utils/AppInit"),
         EditorManager       = require("editor/EditorManager"),
         HTMLUtils           = require("language/HTMLUtils"),
         LanguageManager     = require("language/LanguageManager"),
         ProjectManager      = require("project/ProjectManager"),
         TokenUtils          = require("utils/TokenUtils"),
+        IndexingWorker      = require("worker/IndexingWorker"),
         _                   = require("thirdparty/lodash");
 
+    const MAX_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB
     // Constants
-    var SELECTOR   = "selector",
+    const SELECTOR   = "selector",
         PROP_NAME  = "prop.name",
         PROP_VALUE = "prop.value",
         IMPORT_URL = "import.url";
-
-    var RESERVED_FLOW_NAMES = ["content", "element"],
-        INVALID_FLOW_NAMES = ["none", "inherit", "default", "auto", "initial"],
-        IGNORED_FLOW_NAMES = RESERVED_FLOW_NAMES.concat(INVALID_FLOW_NAMES);
 
     /**
      * List of all bracket pairs that is keyed by opening brackets, and the inverted list
@@ -1720,37 +1720,6 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Extracts all named flow instances
-     * @param {!string} text to extract from
-     * @return {Array.<string>} array of unique flow names found in the content (empty if none)
-     */
-    function extractAllNamedFlows(text) {
-        var namedFlowRegEx = /(?:flow\-(into|from)\:\s*)([\w\-]+)(?:\s*;)/gi,
-            result = [],
-            names = {},
-            thisMatch;
-
-        // Reduce the content so that matches
-        // inside strings and comments are ignored
-        text = reduceStyleSheetForRegExParsing(text);
-
-        // Find the first match
-        thisMatch = namedFlowRegEx.exec(text);
-
-        // Iterate over the matches and add them to result
-        while (thisMatch) {
-            var thisName = thisMatch[2];
-
-            if (IGNORED_FLOW_NAMES.indexOf(thisName) === -1 && !names.hasOwnProperty(thisName)) {
-                names[thisName] = result.push(thisName);
-            }
-            thisMatch = namedFlowRegEx.exec(text);
-        }
-
-        return result;
-    }
-
-    /**
      * Adds a new rule to the end of the given document, and returns the range of the added rule
      * and the position of the cursor on the indented blank line within it. Note that the range will
      * not include all the inserted text (we insert extra newlines before and after the rule).
@@ -1842,10 +1811,295 @@ define(function (require, exports, module) {
         return (allSelectors.length ? allSelectors[0].selectorGroup || allSelectors[0].selector : "");
     }
 
+    function _extractSelectorSet(selectorList) {
+        const regex = /[{}!]/;
+        const selectors = new Set();
+        if(!selectorList){
+            return selectors;
+        }
+        for(let item of selectorList) {
+            if(regex.test(item) || !item.trim()){
+                // this happens for scss selectors like #${var}-something. we ignore that for now instead of resolving
+                continue;
+            }
+            const extracted = extractSelectorBase(item);
+            extracted.trim() && selectors.add(extracted); // x:hover or x::some -> x
+        }
+        return selectors;
+    }
+
+    const CSSSelectorCache = new Phoenix.libs.LRUCache({
+        maxSize: 100*1024*1024, // 100MB
+        sizeCalculation: (value) => {
+            return value.length;
+        }
+    });
+
+    function _projectFileChanged(_evt, entry) {
+        if(!entry){
+            return;
+        }
+        let changedPath = entry.fullPath;
+        if(entry.isFile) {
+            CSSSelectorCache.delete(changedPath);
+        } else if(entry.isDirectory) {
+            changedPath = Phoenix.VFS.ensureTrailingSlash(changedPath);
+            const cachedFilePaths = Array.from(CSSSelectorCache.keys());
+            for(let filePath of cachedFilePaths) {
+                if(filePath.startsWith(changedPath)){
+                    CSSSelectorCache.delete(filePath);
+                }
+            }
+        }
+    }
+
+    const CSS_MODE_MAP = {
+        css: "CSS",
+        less: "LESS",
+        scss: "SCSS"
+    };
+
+    function _loadFileAndScanCSSSelectorCached(fullPath) {
+        return new Promise(resolve=>{
+            DocumentManager.getDocumentForPath(fullPath)
+                .done(function (doc) {
+                    // Find all matching rules for the given CSS file's content, and add them to the
+                    // overall search result
+                    let selectors = new Set();
+                    const cachedSelectors = CSSSelectorCache.get(fullPath);
+                    if(cachedSelectors){
+                        resolve(new Set(JSON.parse(cachedSelectors)));
+                        return;
+                    }
+                    const langID = doc.getLanguage().getId();
+                    if(!CSS_MODE_MAP[langID]){
+                        console.log("Cannot parse CSS for mode :", langID, "ignoring", fullPath);
+                        resolve(selectors);
+                        return;
+                    }
+                    console.log("scanning file for css selector collation: ", fullPath);
+                    IndexingWorker.execPeer("css_getAllSymbols",
+                        {text: doc.getText(), cssMode: CSS_MODE_MAP[langID], filePath: fullPath})
+                        .then((selectorArray)=>{
+                            selectors = _extractSelectorSet(selectorArray);
+                            CSSSelectorCache.set(fullPath, JSON.stringify(Array.from(selectors)));
+                            resolve(selectors);
+                        }).catch(err=>{
+                            console.warn("CSS language service unable to get selectors for" + fullPath, err);
+                            resolve(selectors);  // still resolve, so the overall result doesn't reject
+                        });
+                })
+                .fail(function (error) {
+                    console.warn("Unable to read " + fullPath + " during CSS selector search:", error);
+                    resolve(new Set());  // still resolve, so the overall result doesn't reject
+                });
+        });
+    }
+
+    function extractSelectorBase(selector) {
+        // Use a regular expression to find the base part of the selector before any spaces, combinators,
+        // pseudo-classes, or attribute selectors
+        const match = selector.match(/^[^\s>+~:\[]+/);
+        // Return the match if found, otherwise return the original selector if no ':' or '::' is present
+        selector = match ? match[0] : selector;
+        if(selector.startsWith(".")) {
+            // Eg .class1.class2 type selector, we have to consider this too, so we always take the first segment only
+            selector = "." + selector.split(".")[1];
+        }
+        return selector;
+    }
+
+    const _htmlLikeFileExts = ["htm", "html", "xhtml", "php"];
+    function _isHtmlLike(editor) {
+        const fullPath = editor && editor.document.file.fullPath;
+        if (!editor || !LanguageManager.getLanguageForPath(fullPath)) {
+            return false;
+        }
+
+        return (_htmlLikeFileExts.indexOf(LanguageManager.getLanguageForPath(fullPath).getId() || "") !== -1);
+    }
+
+    const cacheInProgress = new Set();
+    // block fetches to only happen once every 10 seconds to prevent loading web servers on every code hint type
+    // Cached external links are never fetched again. problem happens when links fetch fails, and can be immediately
+    // retried on next key press. we need to block that and do it once in 10 seconds only.
+    const fetchBlock10Secs = new Phoenix.libs.LRUCache({
+        max: 5000,
+        ttl: 1000 * 10 // in ms
+    });
+    async function _precacheExternalStyleSheet(link) {
+        try {
+            // dont use fetchBlock10Secs.has as lru cache wont delete ttl expired items for performance.
+            // fetchBlock10Secs.get will return undefined for ttl expired items
+            // we purge this cache anyway on project switch/max entry reached.
+            if(cacheInProgress.has(link) || fetchBlock10Secs.get(link)){
+                return;
+            }
+            fetchBlock10Secs.set(link, true);
+            cacheInProgress.add(link);
+            const extension = path.extname(new URL(link).pathname).slice(1);
+            if (!extension || !CSS_MODE_MAP[extension]) {
+                console.log(`Not a valid stylesheet type ${extension}, ignoring`, link);
+                return;
+            }
+            const responseHead = await fetch(link, { method: 'HEAD' });
+            const contentLength = responseHead.headers.get('Content-Length');
+            if (!contentLength || contentLength > MAX_CONTENT_LENGTH) {
+                console.log(`Stylesheet is larger than ${MAX_CONTENT_LENGTH}bytes - ${contentLength}, ignoring`, link);
+                return;
+            }
+
+            const response = await fetch(link);
+            const styleSheetText = await response.text();
+            IndexingWorker.execPeer("css_getAllSymbols",
+                {text: styleSheetText, cssMode: CSS_MODE_MAP[extension], filePath: link})
+                .then((selectorArray)=>{
+                    const selectorJson = JSON.stringify(Array.from(_extractSelectorSet(selectorArray)));
+                    CSSSelectorCache.set(link, selectorJson);
+                }).catch(err=>{
+                    console.warn("CSS language service unable to get selectors for link" + link, err);
+                });
+        } catch (e) {
+            console.error("Error pre caching externally linked style sheet ", link);
+        }
+        cacheInProgress.delete(link);
+    }
+
+    const MAX_ALLOWED_EXTERNAL_STYLE_SHEETS = 30;
+
+    /**
+     * html files may have embedded link style sheets to external CDN urls. We will parse them to get all selectors.
+     * @param htmlFileContent
+     * @param fileMode
+     * @param fullPath
+     * @return {Promise<void>}
+     * @private
+     */
+    async function _getLinkedCSSFileSelectors(htmlFileContent, fileMode, fullPath) {
+        const linkedFiles = await catchToNull(IndexingWorker.execPeer(
+            "html_getAllLinks", {text: htmlFileContent, htmlMode: fileMode, filePath: fullPath}),
+            "error extracting linked css files from"+ fullPath) || [];
+        let selectors = new Set();
+        let externalStyleSheetCount = 0;
+        for(const link of linkedFiles) {
+            if(externalStyleSheetCount >= MAX_ALLOWED_EXTERNAL_STYLE_SHEETS){
+                break;
+            }
+            if(link.startsWith("http://") || link.startsWith("https://")) {
+                externalStyleSheetCount ++;
+                let cachedSelectorsArray = CSSSelectorCache.get(link);
+                if(cachedSelectorsArray){
+                    cachedSelectorsArray = JSON.parse(cachedSelectorsArray);
+                    for(let value of cachedSelectorsArray){
+                        selectors.add(value);
+                    }
+                } else {
+                    _precacheExternalStyleSheet(link);
+                }
+            }
+        }
+        return selectors;
+    }
+
+    async function _getAllSelectorsInCurrentHTMLEditor() {
+        let selectors = new Set();
+        const htmlEditor = EditorManager.getCurrentFullEditor();
+        if (!htmlEditor || !_isHtmlLike(htmlEditor) ) {
+            return selectors;
+        }
+
+        // Find all <style> blocks in the HTML file
+        const styleBlocks = HTMLUtils.findStyleBlocks(htmlEditor);
+        let cssText = "";
+
+        styleBlocks.forEach(function (styleBlockInfo) {
+            // Search this one <style> block's content
+            cssText += styleBlockInfo.text;
+        });
+        const fullPath = htmlEditor.document.file.fullPath;
+        const selectorsPromise = IndexingWorker.execPeer(
+            "css_getAllSymbols", {text: cssText, cssMode: "CSS", filePath: fullPath});
+        const htmlLanguageID = LanguageManager.getLanguageForPath(fullPath).getId();
+        const remoteLinkedSelectors = await _getLinkedCSSFileSelectors(htmlEditor.document.getText(),
+            htmlLanguageID.toUpperCase(), fullPath);
+        selectors = await catchToNull(selectorsPromise, "CSS language service unable to get selectors for" + fullPath);
+        selectors = selectors || new Set();
+        return new Set([...selectors, ...remoteLinkedSelectors]);
+    }
+
+    let globalPrecacheRun = 0;
+    function getAllCssSelectorsInProject(options = {
+        includeClasses: true,
+        includeIDs: true,
+        scanCurrentHtml: true
+    }) {
+        globalPrecacheRun ++; // we need to stop the pre cache logic from doing the same cache again
+        return new Promise(resolve=>{
+            ProjectManager.getAllFiles(ProjectManager.getLanguageFilter(["css", "less", "scss"]))
+                .done(function (cssFiles) {
+                    // Create an array of promises from the array of cssFiles
+                    const promises = cssFiles.map(fileInfo => _loadFileAndScanCSSSelectorCached(fileInfo.fullPath));
+                    if(options.scanCurrentHtml){
+                        promises.push(_getAllSelectorsInCurrentHTMLEditor());
+                    }
+                    const mergedSets = new Set();
+                    // Use Promise.allSettled to handle all promises
+                    Promise.allSettled(promises)
+                        .then(results => {
+                            results.forEach((result, index) => {
+                                if (result.status === 'fulfilled') {
+                                    result.value.forEach(value => {
+                                        if((options.includeClasses && value.startsWith(".")) ||
+                                            (options.includeIDs && value.startsWith("#"))) {
+                                            mergedSets.add(value);
+                                        }
+                                    });
+                                } else {
+                                    console.error(`Error collect css selectors from file ${cssFiles[index].fullPath}:`,
+                                        result.reason);
+                                }
+                            });
+                            resolve(Array.from(mergedSets.keys()));
+                        });
+                });
+        });
+    }
+
+    async function _populateSelectorCache() {
+        globalPrecacheRun ++;
+        const currentCacheRun = globalPrecacheRun;
+        const cssFiles = await jsPromise(ProjectManager.getAllFiles(
+            ProjectManager.getLanguageFilter(["css", "less", "scss"])));
+        for(let cssFile of cssFiles){
+            if(currentCacheRun !== globalPrecacheRun) {
+                // this is for cases in very large projects where the project switches while a
+                // project wide css parse was in progress.
+                break;
+            }
+            await _loadFileAndScanCSSSelectorCached(cssFile.fullPath); // this is serial to not hog processor
+        }
+    }
+
+    AppInit.appReady(function () {
+        if(Phoenix.isSpecRunnerWindow){
+            // no unit tests event handlers
+            return;
+        }
+        ProjectManager.on(ProjectManager.EVENT_PROJECT_FILE_CHANGED, _projectFileChanged);
+        ProjectManager.on(ProjectManager.EVENT_PROJECT_OPEN, ()=>{
+            CSSSelectorCache.clear();
+            fetchBlock10Secs.clear();
+            setTimeout(_populateSelectorCache, 2000);
+        });
+        setTimeout(_populateSelectorCache, 2000);
+        DocumentManager.on(DocumentManager.EVENT_DOCUMENT_CHANGE, function (event, doc, _changelist) {
+            CSSSelectorCache.delete(doc.file.fullPath);
+        });
+    });
+
     exports._findAllMatchingSelectorsInText = _findAllMatchingSelectorsInText; // For testing only
     exports.findMatchingRules = findMatchingRules;
     exports.extractAllSelectors = extractAllSelectors;
-    exports.extractAllNamedFlows = extractAllNamedFlows;
     exports.findSelectorAtDocumentPos = findSelectorAtDocumentPos;
     exports.reduceStyleSheetForRegExParsing = reduceStyleSheetForRegExParsing;
     exports.addRuleToDocument = addRuleToDocument;
@@ -1853,6 +2107,7 @@ define(function (require, exports, module) {
     exports.getRangeSelectors = getRangeSelectors;
     exports.getCompleteSelectors = getCompleteSelectors;
     exports.isCSSPreprocessorFile = isCSSPreprocessorFile;
+    exports.getAllCssSelectorsInProject = getAllCssSelectorsInProject;
 
     exports.SELECTOR = SELECTOR;
     exports.PROP_NAME = PROP_NAME;
