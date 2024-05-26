@@ -21,7 +21,7 @@
 
 // jshint ignore: start
 /*jslint regexp: true */
-/*globals logger, Phoenix, path*/
+/*globals logger, jsPromise, path*/
 
 define(function (require, exports, module) {
 
@@ -1661,7 +1661,7 @@ define(function (require, exports, module) {
 
     async function _tryToOpenFile(absOrRelativePath, cwdIfRelativePath) {
         try{
-            let fileToOpen = absOrRelativePath;
+            let fileToOpen;
             if(cwdIfRelativePath){
                 fileToOpen = window.path.join(Phoenix.VFS.getTauriVirtualPath(cwdIfRelativePath), absOrRelativePath);
             } else {
@@ -1669,7 +1669,7 @@ define(function (require, exports, module) {
             }
             let isFile = await _fileExists(fileToOpen);
             if(isFile){
-                FileViewController.openFileAndAddToWorkingSet(fileToOpen);
+                await jsPromise(FileViewController.openFileAndAddToWorkingSet(fileToOpen));
                 return true;
             }
         } catch (e) {
@@ -1846,14 +1846,35 @@ define(function (require, exports, module) {
         }
     }
 
+    function _getDeleteMessageTemplate(isFile, canMoveToTrash) {
+        if(!Phoenix.isNativeApp || !canMoveToTrash){
+            return isFile ? Strings.CONFIRM_FILE_DELETE : Strings.CONFIRM_FOLDER_DELETE;
+        }
+        if(Phoenix.platform === "win") {
+            return isFile ? Strings.CONFIRM_FILE_DELETE_RECYCLE_BIN : Strings.CONFIRM_FOLDER_DELETE_RECYCLE_BIN;
+        }
+        return isFile ? Strings.CONFIRM_FILE_DELETE_TRASH : Strings.CONFIRM_FOLDER_DELETE_TRASH;
+    }
+
+    function _getDeleteButtonString(canMoveToTrash) {
+        if(!Phoenix.isNativeApp || !canMoveToTrash){
+            return Strings.DELETE;
+        }
+        if(Phoenix.platform === "win") {
+            return Strings.MOVE_TO_RECYCLE_BIN;
+        }
+        return Strings.MOVE_TO_TRASH;
+    }
+
     /** Delete file command handler  **/
     function handleFileDelete() {
-        var entry = ProjectManager.getSelectedItem();
+        const entry = ProjectManager.getSelectedItem();
+        const canMoveToTrash = Phoenix.app.canMoveToTrash(entry.fullPath);
         Dialogs.showModalDialog(
             DefaultDialogs.DIALOG_ID_EXT_DELETED,
             Strings.CONFIRM_DELETE_TITLE,
             StringUtils.format(
-                entry.isFile ? Strings.CONFIRM_FILE_DELETE : Strings.CONFIRM_FOLDER_DELETE,
+                _getDeleteMessageTemplate(entry.isFile, canMoveToTrash),
                 StringUtils.breakableUrl(ProjectManager.getProjectRelativePath(entry.fullPath))
             ),
             [
@@ -1865,12 +1886,16 @@ define(function (require, exports, module) {
                 {
                     className: Dialogs.DIALOG_BTN_CLASS_PRIMARY,
                     id: Dialogs.DIALOG_BTN_OK,
-                    text: Strings.DELETE
+                    text: _getDeleteButtonString(canMoveToTrash)
                 }
             ]
         )
             .done(function (id) {
                 if (id === Dialogs.DIALOG_BTN_OK) {
+                    if(Phoenix.isNativeApp && canMoveToTrash) {
+                        ProjectManager.moveToTrash(entry);
+                        return;
+                    }
                     ProjectManager.deleteItem(entry);
                 }
             });
@@ -2162,7 +2187,13 @@ define(function (require, exports, module) {
         }
         firstProjectOpenHandled = true;
         Phoenix.app.setSingleInstanceCLIArgsHandler(_singleInstanceHandler);
-        _openFilesPassedInFromCLI();
+        _openFilesPassedInFromCLI()
+            .finally(()=>{
+                // in mac, this is not exactly correct. This event will get triggered on startup, but mac will only
+                // raise events in the background and there is no way for us to know when the mac open with events
+                // come. Use this event carefully in mac.
+                ProjectManager.trigger(ProjectManager.EVENT_AFTER_STARTUP_FILES_LOADED);
+            });
     });
 
     // Exported for unit testing only

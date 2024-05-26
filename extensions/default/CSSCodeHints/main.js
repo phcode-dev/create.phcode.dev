@@ -32,12 +32,33 @@ define(function (require, exports, module) {
         StringMatch         = brackets.getModule("utils/StringMatch"),
         ColorUtils          = brackets.getModule("utils/ColorUtils"),
         Strings             = brackets.getModule("strings"),
+        KeyEvent            = brackets.getModule("utils/KeyEvent"),
+        LiveDevelopment     = brackets.getModule("LiveDevelopment/main"),
+        Metrics             = brackets.getModule("utils/Metrics"),
         CSSProperties       = require("text!CSSProperties.json"),
         properties          = JSON.parse(CSSProperties);
 
     require("./css-lint");
 
+    const BOOSTED_PROPERTIES = [
+        "display", "position",
+        "margin", "margin-bottom", "margin-left", "margin-right", "margin-top",
+        "padding", "padding-bottom", "padding-left", "padding-right", "padding-top",
+        "width", "height",
+        "background-color", "background", "color",
+        "font-size", "font-family",
+        "text-align",
+        "line-height",
+        "border", "border-radius", "box-shadow",
+        "transition", "animation", "transform",
+        "overflow",
+        "cursor",
+        "z-index",
+        "flex", "grid"
+    ];
+    const MAX_CSS_HINTS = 50;
     const cssWideKeywords = ['initial', 'inherit', 'unset', 'var()', 'calc()'];
+    let computedProperties, computedPropertyKeys;
 
     PreferencesManager.definePreference("codehint.CssPropHints", "boolean", true, {
         description: Strings.DESCRIPTION_CSS_PROP_HINTS
@@ -45,8 +66,7 @@ define(function (require, exports, module) {
 
     // Context of the last request for hints: either CSSUtils.PROP_NAME,
     // CSSUtils.PROP_VALUE or null.
-    var lastContext,
-        stringMatcherOptions = { preferPrefixMatches: true };
+    var lastContext;
 
     /**
      * @constructor
@@ -153,17 +173,16 @@ define(function (require, exports, module) {
      * highlighted.
      *
      * @param {Array.<Object>} hints - the list of hints to format
+     * @param isColorSwatch
      * @return {Array.jQuery} sorted Array of jQuery DOM elements to insert
      */
-    function formatHints(hints) {
-        var hasColorSwatch = hints.some(function (token) {
-            return token.color;
-        });
-
-        StringMatch.basicMatchSort(hints);
+    function formatHints(hints, isColorSwatch) {
         hints = vendorPrefixesAndGenericToEnd(hints);
+        if(hints.length > MAX_CSS_HINTS) {
+            hints = hints.splice(0, MAX_CSS_HINTS);
+        }
         return hints.map(function (token) {
-            var $hintObj = $(`<span data-val='${token.label || token.value}'></span>`).addClass("brackets-css-hints brackets-hints");
+            var $hintObj = $(`<span data-val='${token.label || token.value || token.text}'></span>`).addClass("brackets-css-hints brackets-hints");
 
             // highlight the matched portion of each hint
             if (token.stringRanges) {
@@ -177,11 +196,11 @@ define(function (require, exports, module) {
                     }
                 });
             } else {
-                $hintObj.text(token.value);
+                $hintObj.text(token.label || token.value);
             }
 
-            if (hasColorSwatch) {
-                $hintObj = ColorUtils.formatColorHint($hintObj, token.color);
+            if (isColorSwatch) {
+                $hintObj = ColorUtils.formatColorHint($hintObj, token.color || token.label || token.value);
             }
             if(token.MDN_URL) {
                 const $mdn = $(`<a class="css-code-hint-info" style="text-decoration: none;"
@@ -203,6 +222,29 @@ define(function (require, exports, module) {
             }
         });
         return arr1;
+    }
+
+    function _computeProperties() {
+        const blacklistedValues = {
+            none: true,
+            auto: true
+        };
+        computedProperties = {};
+        for(let propertyKey of Object.keys(properties)) {
+            const property = properties[propertyKey];
+            if(property.type === "color" || !property.values || !property.values.length
+                || propertyKey === "font-family") {
+                computedProperties[propertyKey] = propertyKey;
+                continue;
+            }
+            computedProperties[propertyKey] = propertyKey;
+            for(let value of property.values) {
+                if(!blacklistedValues[value]){
+                    computedProperties[`${propertyKey}: ${value};`] = propertyKey;
+                }
+            }
+        }
+        computedPropertyKeys = Object.keys(computedProperties);
     }
 
     /**
@@ -279,26 +321,27 @@ define(function (require, exports, module) {
             }
             valueArray = properties[needle].values;
             type = properties[needle].type;
+            let isColorSwatch = false;
             if (type === "color") {
+                isColorSwatch = true;
                 valueArray = valueArray.concat(ColorUtils.COLOR_NAMES.map(function (color) {
                     return { text: color, color: color };
                 }));
                 valueArray.push("transparent", "currentColor");
             }
 
-            result = $.map(valueArray, function (pvalue) {
-                var result = StringMatch.stringMatch(pvalue.text || pvalue, valueNeedle, stringMatcherOptions);
-                if (result) {
-                    if (pvalue.color) {
-                        result.color = pvalue.color;
-                    }
+            valueArray = $.map(valueArray, function (pvalue) {
+                return pvalue.text || pvalue;
+            });
 
-                    return result;
-                }
+            result = StringMatch.codeHintsSort(valueNeedle, valueArray, {
+                limit: MAX_CSS_HINTS,
+                onlyContiguous: isColorSwatch // for color swatches, when searching for `ora` we should
+                // only hint <ora>nge and not <o>lived<ra>b (green shade)
             });
 
             return {
-                hints: formatHints(result),
+                hints: formatHints(result, isColorSwatch),
                 match: null, // the CodeHintManager should not format the results
                 selectInitial: selectInitial
             };
@@ -317,16 +360,22 @@ define(function (require, exports, module) {
 
             lastContext = CSSUtils.PROP_NAME;
             needle = needle.substr(0, this.info.offset);
+            if(!computedProperties){
+                _computeProperties();
+            }
 
-            result = $.map(properties, function (pvalues, pname) {
-                var result = StringMatch.stringMatch(pname, needle, stringMatcherOptions);
-                if (result) {
-                    if(properties[pname].MDN_URL){
-                        result.MDN_URL = properties[pname].MDN_URL;
-                    }
-                    return result;
-                }
+
+            result = StringMatch.codeHintsSort(needle, computedPropertyKeys, {
+                limit: MAX_CSS_HINTS,
+                boostPrefixList: BOOSTED_PROPERTIES
             });
+
+            for(let resultItem of result) {
+                const propertyKey = computedPropertyKeys[resultItem.sourceIndex];
+                if(properties[propertyKey] && properties[propertyKey].MDN_URL){
+                    resultItem.MDN_URL = properties[propertyKey].MDN_URL;
+                }
+            }
 
             return {
                 hints: formatHints(result),
@@ -336,6 +385,66 @@ define(function (require, exports, module) {
             };
         }
         return null;
+    };
+
+    const HISTORY_PREFIX = "Live_hint_";
+    let hintSessionId = 0, isInLiveHighlightSession = false;
+
+    CssPropHints.prototype.onClose = function () {
+        if(isInLiveHighlightSession) {
+            this.editor.restoreHistoryPoint(`${HISTORY_PREFIX}${hintSessionId}`);
+            isInLiveHighlightSession = false;
+        }
+        hintSessionId++;
+    };
+
+    CssPropHints.prototype.onHighlight = function ($highlightedEl, _$descriptionElem, reason) {
+        if(!reason){
+            console.error("OnHighlight called without reason, should never happen!");
+            hintSessionId++;
+            return;
+        }
+        const currentLivePreviewDetails = LiveDevelopment.getLivePreviewDetails();
+        if(!(currentLivePreviewDetails && currentLivePreviewDetails.liveDocument)) {
+            // css live hints only for live previewed page and related files
+            return;
+        }
+        const currentlyEditedFile = this.editor.document.file.fullPath;
+        const livePreviewedFile = currentLivePreviewDetails.liveDocument.doc.file.fullPath;
+        if(currentlyEditedFile !== livePreviewedFile) {
+            const isRelatedFile = currentLivePreviewDetails.liveDocument.isRelated &&
+                currentLivePreviewDetails.liveDocument.isRelated(currentlyEditedFile);
+            if(!isRelatedFile) {
+                // file is neither current html file being live previewed, or any of its
+                // related file. we dont show hints in the case
+                return;
+            }
+        }
+        if(reason.source === CodeHintManager.SELECTION_REASON.SESSION_START){
+            hintSessionId++;
+            this.editor.createHistoryRestorePoint(`${HISTORY_PREFIX}${hintSessionId}`);
+            return;
+        }
+        if(reason.source !== CodeHintManager.SELECTION_REASON.KEYBOARD_NAV){
+            return;
+        }
+        const event = reason.event;
+        if(!(event.keyCode === KeyEvent.DOM_VK_UP ||
+            event.keyCode === KeyEvent.DOM_VK_DOWN ||
+            event.keyCode === KeyEvent.DOM_VK_PAGE_UP ||
+            event.keyCode === KeyEvent.DOM_VK_PAGE_DOWN)){
+            return;
+        }
+        Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "cssHint", "preview");
+        const $hintItem = $highlightedEl.find(".brackets-css-hints");
+        const highligtedValue = $highlightedEl.find(".brackets-css-hints").data("val");
+        if(!highligtedValue || !$hintItem.is(":visible")){
+            return;
+        }
+        isInLiveHighlightSession = true;
+        this.editor._dontDismissPopupOnScroll();
+        this.editor.restoreHistoryPoint(`${HISTORY_PREFIX}${hintSessionId}`);
+        this.insertHint($highlightedEl.find(".brackets-css-hints"), true);
     };
 
     /**
@@ -348,7 +457,7 @@ define(function (require, exports, module) {
      * Indicates whether the manager should follow hint insertion with an
      * additional explicit hint request.
      */
-    CssPropHints.prototype.insertHint = function (hint) {
+    CssPropHints.prototype.insertHint = function (hint, isLiveHighlight) {
         var offset = this.info.offset,
             cursor = this.editor.getCursorPos(),
             start = {line: -1, ch: -1},
@@ -359,7 +468,7 @@ define(function (require, exports, module) {
             ctx;
 
         if (hint.jquery) {
-            hint = hint.data("val");
+            hint = hint.data("val") + ""; // font-weight: 400, 400 is returned as number so,
         }
 
         if (this.info.context !== CSSUtils.PROP_NAME && this.info.context !== CSSUtils.PROP_VALUE) {
@@ -408,7 +517,7 @@ define(function (require, exports, module) {
                     if (TokenUtils.moveNextToken(ctx) && ctx.token.string.length > 0 && !/\S/.test(ctx.token.string)) {
                         newCursor.ch += ctx.token.string.length;
                     }
-                } else {
+                } else if(!hint.endsWith(";")){
                     hint += ": ";
                 }
             }
@@ -430,6 +539,33 @@ define(function (require, exports, module) {
                     ch: start.ch + parenMatch.index + 1 };
                 keepHints = true;
             }
+        }
+
+        if(isLiveHighlight) {
+            // this is via user press up and down arrows when code hints is visible
+            if(this.info.context !== CSSUtils.PROP_VALUE && !hint.endsWith(";")) {
+                // we only do live hints for css property values. else UX is jarring.
+                // property full statements hints like "display: flex;" will be live previewed tho
+                return keepHints;
+            }
+            if(!this.editor.hasSelection()){
+                this.editor.setSelection(start, end);
+            }
+            this.editor.replaceSelection(hint, 'around', "liveHints");
+            return keepHints;
+        }
+
+        // this is commit flow
+        if(isInLiveHighlightSession) {
+            // end previous highlight session.
+            isInLiveHighlightSession = false;
+            hintSessionId++;
+        }
+
+        if(this.editor.hasSelection()){
+            // this is when user commits
+            this.editor.replaceSelection(hint, 'end');
+            return keepHints;
         }
 
         // HACK (tracking adobe/brackets#1688): We talk to the private CodeMirror instance

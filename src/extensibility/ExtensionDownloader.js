@@ -18,13 +18,16 @@
  *
  */
 
-/*global path*/
+/*global path, jsPromise, catchToNull*/
 
 define(function (require, exports, module) {
     const EventDispatcher = require("utils/EventDispatcher"),
         ExtensionLoader = require("utils/ExtensionLoader"),
+        FileUtils        = require("file/FileUtils"),
+        NodeUtils        = require("utils/NodeUtils"),
         Package  = require("extensibility/Package"),
         FileSystem = require("filesystem/FileSystem"),
+        FileSystemError = require("filesystem/FileSystemError"),
         ZipUtils = require("utils/ZipUtils");
     EventDispatcher.makeEventDispatcher(exports);
 
@@ -104,29 +107,126 @@ define(function (require, exports, module) {
         downloadCancelled[downloadId] = true;
     }
 
+    async function _validateAndNpmInstallIfNodeExtension(nodeExtPath) {
+        const packageJSONFile = FileSystem.getFileForPath(path.join(nodeExtPath, "package.json"));
+        let packageJson = await catchToNull(jsPromise(FileUtils.readAsText(packageJSONFile)),
+            "package.json not found for installing extension, trying to continue "+ nodeExtPath);
+        try{
+            if(packageJson){
+                packageJson = JSON.parse(packageJson);
+            }
+        } catch (e) {
+            console.error("Error parsing package json for extension", nodeExtPath, e);
+            return null; // let it flow, we are only concerned of node extensions
+        }
+        if(!packageJson || !packageJson.nodeConfig || !packageJson.nodeConfig.main){
+            // legacy extensions can be loaded with no package.json
+            // else if no node config, or node main is not defined, we just treat it as a non node extension
+            return null;
+        }
+        if(packageJson.nodeConfig.nodeIsRequired && !Phoenix.isNativeApp) {
+            return "Extension can only be installed in native builds!";
+        }
+        if(!Phoenix.isNativeApp){
+            return null;
+        }
+        let nodeMainFile = path.join(nodeExtPath, packageJson.nodeConfig.main);
+        let file = FileSystem.getFileForPath(nodeMainFile);
+        let isExists = await file.existsAsync();
+        if(!isExists){
+            console.error("Extension cannot be installed; could not find node main file: ",
+                nodeMainFile, packageJson.nodeConfig.main);
+            return "Extension is broken, (Err: node main file not found)";
+        }
+
+        let npmInstallFolder = packageJson.nodeConfig.npmInstall;
+        if(!npmInstallFolder) {
+            return null;
+        }
+        npmInstallFolder = path.join(nodeExtPath, packageJson.nodeConfig.npmInstall);
+        const nodeModulesFolder = path.join(npmInstallFolder, "node_modules");
+        let directory = FileSystem.getDirectoryForPath(npmInstallFolder);
+        isExists = await directory.existsAsync();
+        if(!isExists){
+            console.error("Extension cannot be installed; could not find folder to run npm install: ",
+                npmInstallFolder);
+            return "Extension is broken, (Err: node source folder not found)";
+        }
+
+        const nodePackageJson = path.join(npmInstallFolder, "package.json");
+        let nodePackageFile = FileSystem.getFileForPath(nodePackageJson);
+        isExists = await nodePackageFile.existsAsync();
+        if(!isExists){
+            console.error("Extension cannot be installed; could not find package.json file to npm install in: ",
+                npmInstallFolder);
+            return "Extension is broken, (Err: it's node package.json not found)";
+        }
+
+        directory = FileSystem.getDirectoryForPath(nodeModulesFolder);
+        isExists = await directory.existsAsync();
+        if(isExists) {
+            console.error("Could not install extension as the extension has node_modules folder in" +
+                " the package", nodeModulesFolder, "Extensions that defines a nodeConfig.npmInstall" +
+                " path should not package node_modules!");
+            return "Extension is broken. (Err: cannot npm install inside extension folder" +
+                " as it already has node_modules)";
+        }
+        const npmInstallPlatformPath = Phoenix.fs.getTauriPlatformPath(npmInstallFolder);
+        return NodeUtils._npmInstallInFolder(npmInstallPlatformPath);
+    }
+
     function install(path, destinationDirectory, config) {
         const d = new $.Deferred();
-        // if we reached here in phoenix, install succeded
-        d.resolve({
-            name: _getExtensionName(config.nameHint),
-            installationStatus: Package.InstallationStatuses.INSTALLED,
-            installedTo: path
-        });
+        // if we reached here in phoenix, install succeeded
+        _validateAndNpmInstallIfNodeExtension(path)
+            .then(validationErr =>{
+                if(validationErr) {
+                    d.resolve({
+                        name: _getExtensionName(config.nameHint),
+                        installationStatus: Package.InstallationStatuses.FAILED,
+                        errors: [validationErr]
+                    });
+                    return;
+                }
+                d.resolve({
+                    name: _getExtensionName(config.nameHint),
+                    installationStatus: Package.InstallationStatuses.INSTALLED,
+                    installedTo: path
+                });
+            }).catch(err=>{
+                console.error("Error installing extension", err);
+                d.resolve({
+                    name: _getExtensionName(config.nameHint),
+                    installationStatus: Package.InstallationStatuses.FAILED,
+                    errors: ["Error installing extension"]
+                });
+            });
         return d.promise();
+    }
+
+    function _markForDeleteOnRestart(extensionDirectory) {
+        let file = FileSystem.getFileForPath(
+            path.join(extensionDirectory.fullPath, ExtensionLoader._DELETED_EXTENSION_FILE_MARKER));
+        return jsPromise(FileUtils.writeText(file, "This extension is marked for delete on restart of phcode", true));
     }
 
     /**
      * Removes the extension at the given path.
      *
-     * @param {string} path The absolute path to the extension to remove.
+     * @param {string} extensionPath The absolute path to the extension to remove.
      * @return {$.Promise} A promise that's resolved when the extension is removed, or
      *     rejected if there was an error.
      */
-    function remove(path) {
+    function remove(extensionPath) {
         const d = new $.Deferred();
-        FileSystem.getFileForPath(path).unlink(err=>{
-            if(err){
-                d.reject();
+        const extensionDirectory = FileSystem.getDirectoryForPath(extensionPath);
+        extensionDirectory.unlink(err=>{
+            if(err && err !== FileSystemError.NOT_FOUND){ // && err !== enoent
+                // if we cant delete the extension, we will try to mark the extension to be removed on restart.
+                // This can happen in windows with node extensions where nodejs holds fs locks on the node folder.
+                _markForDeleteOnRestart(extensionDirectory)
+                    .then(d.resolve)
+                    .catch(d.reject);
                 return;
             }
             d.resolve();

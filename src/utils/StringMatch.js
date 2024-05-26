@@ -24,7 +24,7 @@
 define(function (require, exports, module) {
 
 
-    var _ = require("thirdparty/lodash");
+    const _ = require("thirdparty/lodash");
 
     /*
      * Performs matching that is useful for QuickOpen and similar searches.
@@ -735,6 +735,191 @@ define(function (require, exports, module) {
         return result;
     }
 
+    /**
+     * Computes matching ranges within a search string based on the provided query. By default, only contiguous
+     * ranges are included/supported.
+     *
+     * @param {string} query - The query to find in the search string.
+     * @param {string} searchString - The string to find the query in.
+     * @param {boolean} includeNonContiguous - if set, will only include non-contiguous results.
+     *          ie: `seg<Gontinous>IsAllowed` and `non<contig>uous<Segments>Allowe<d>`. Not supported for now.
+     *
+     * @returns {Array<{text: string, matched: boolean}>} An array of objects, where each object represents
+     *          a part of the search string. Each object has two properties: 'text' and 'matched'.
+     *          'text' is a segment of the search string, and 'matched' is a boolean indicating whether
+     *           that segment matches the query.
+     *
+     * @example // Let's assume that we have the following parameters:
+     * // query = 'color'
+     * // searchString = 'background-color: blue;'
+     * // Then, the _computeMatchingRanges() should return the following:
+     * //    [
+     * //      {
+     * //          text: 'background-', matched: false
+     * //      },
+     * //      {
+     * //          text: 'color', matched: true
+     * //      },
+     * //      {
+     * //          text: ': blue;', matched: false
+     * //      },
+     * //   ]
+     * @private
+     */
+    function _computeMatchingRanges(query= "", searchString = "", includeNonContiguous) {
+        let index = searchString.toLowerCase().indexOf(query.toLowerCase());
+
+        if(includeNonContiguous){
+            console.error("includeNonContiguous option is not supported in _computeMatchingRanges");
+        }
+        if (index === -1) {
+            // an exact match was not found. but maybe there are hyphenated segments. Eg.
+            // `roundcolor` should match `backg<round>-<color>`.
+            return null; // add support later
+        }
+        // now we have to find segment that matches the given query. Eg:
+        // Eg: background-color: blue;
+
+        if(index === 0 && query.length === searchString.length) {
+            // background-color: blue; full match case
+            // match is at beginning
+            return [{
+                text: searchString,
+                matched: true
+            }];
+        }
+        if(index === 0) {
+            // query = backgou , can be split into 2 parts <backgro>und-color: blue;
+            // match is at beginning
+            return [{
+                text: searchString.slice(0, query.length),
+                matched: true
+            }, {
+                text: searchString.slice(query.length),
+                matched: false
+            }];
+        }
+        if((index + query.length) === searchString.length) {
+            // query = blue; , can be split into 2 parts: background-color: <blue;>
+            // match is at the end
+            return [{
+                text: searchString.slice(0, index),
+                matched: false
+            }, {
+                text: searchString.slice(index),
+                matched: true
+            }];
+        }
+        // query = color , can be split into 3 parts: background-<color>: blue;
+        // middle match
+        return [{
+            text: searchString.slice(0, index),
+            matched: false
+        }, {
+            text: searchString.substring(index, index + query.length),
+            matched: true
+        }, {
+            text: searchString.slice(index +  query.length),
+            matched: false
+        }];
+    }
+
+    /**
+     * Computes the most relevant ordering for code hints
+     * @param {Array<>} result
+     * @param query
+     * @param {Array[string]} [prefixListLower] - Optional array of result values,
+     *          Will rank matching items in the choices to top
+     *          if query starts with the array. EG: on typing b, we have to show background-color
+     *          to top. So we pass in ["background-color"] as boost prefix List option along with other
+     *          css properties that we want to boost in the results.
+     * @param {number} [maxResults] - Optional maximum number of results to include in results
+     * @param {boolean} onlyContiguous - is set, will only include contiguous results.
+     *          ie: test-<bac>kcol is ok, test-<ba>ck<c>ol is not
+     * @returns {*|*[]}
+     */
+    function _codeHintsRelevanceSort(result, query, prefixListLower, maxResults, onlyContiguous) {
+        const queryLower = query.toLowerCase();
+        if(!prefixListLower){
+            return result;
+        }
+        prefixListLower = prefixListLower.map(prefix => prefix.toLowerCase());
+        const filteredPrefixMapLower = {};
+        for(let prefixLower of prefixListLower){
+            if(prefixLower.startsWith(queryLower)){
+                filteredPrefixMapLower[prefixLower] = true;
+            }
+        }
+        // Eg: <backgro>und-color , when searching backgro and if `background color` is in prefixListLower
+        const resultsWithPrefix = {},
+            // following arrays are populated for choices not in prefixListLower
+            // Eg: <color>-background , when searching color, the first position full match ranks higher
+            startingWithResults = [],
+            // Eg: background-<color>; , when searching color, will be ranked after matches at beginning position.
+            endingWithResults = [],
+            contiguousResults = [], // Eg: background-<color>-border , when searching color, internal position
+            disjointResults = []; // Eg: <ba>ckground-<co>lor , when searching baco
+        let resultItemLabelLower, fullMatchStartIndex, fullMatchIndexFromEnd;
+        for(const resultItem of result) {
+            resultItemLabelLower = resultItem.label.toLowerCase();
+            fullMatchStartIndex = resultItemLabelLower.indexOf(queryLower);
+            fullMatchIndexFromEnd = -1;
+            if(fullMatchStartIndex !== -1){
+                // Eg: `back-<color>` : fullMatchIndexFromEnd = 0 and for `back-<color>;` it is 1
+                fullMatchIndexFromEnd = resultItemLabelLower.length - (fullMatchStartIndex + queryLower + 1);
+            }
+            if(filteredPrefixMapLower[resultItemLabelLower]) { // if result matches one of the prefix
+                resultsWithPrefix[resultItemLabelLower] = resultItem;
+                resultItem.matchGoodness = +Number.MAX_VALUE; // boosted match
+            } else if(fullMatchStartIndex === 0){
+                // the result starts with the query string and is therefore given the highest priority
+                startingWithResults.push(resultItem);
+                resultItem.matchGoodness = +Number.MAX_VALUE; // boosted match
+            } else if(fullMatchIndexFromEnd === 0 || fullMatchIndexFromEnd === 1){
+                // Eg: `back-<color>` : fullMatchIndexFromEnd = 0 and for `back-<color>;` it is 1
+                endingWithResults.push(resultItem);
+                resultItem.matchGoodness = +Number.MAX_VALUE; // boosted match
+            } else if(resultItemLabelLower.includes(queryLower)){
+                contiguousResults.push(resultItem);
+                resultItem.matchGoodness = +Number.MAX_VALUE; // boosted match
+            } else {
+                disjointResults.push(resultItem);
+            }
+            if(maxResults && resultsWithPrefix.length === maxResults) {
+                break; // we don't need to go any further
+            }
+        }
+        // we have to maintain the ordering of the items in prefix list in
+        // items in the result.
+        const orderedResults = [];
+        // first merge the boosted prefixes
+        for(let prefixItemLower of prefixListLower) {
+            if(resultsWithPrefix[prefixItemLower]){
+                orderedResults.push(resultsWithPrefix[prefixItemLower]);
+            }
+        }
+        let totalResultCount = orderedResults.length;
+        function _mergeResults(resultArray) {
+            for(let resultItem of resultArray) {
+                if(maxResults && totalResultCount >= maxResults) {
+                    break;
+                }
+                orderedResults.push(resultItem);
+                totalResultCount++;
+            }
+        }
+
+        // now add the results in order.
+        _mergeResults(startingWithResults);
+        _mergeResults(endingWithResults);
+        _mergeResults(contiguousResults);
+        if(onlyContiguous) {
+            return orderedResults;
+        }
+        _mergeResults(disjointResults);
+
+        return orderedResults;
+    }
 
     /*
      * Match str against the query using the QuickOpen algorithm provided by
@@ -896,6 +1081,52 @@ define(function (require, exports, module) {
         multiFieldSort(searchResults, { matchGoodness: 0, label: 1 });
     }
 
+    const codeHintsMatcherOptions = { preferPrefixMatches: true };
+    /**
+     * Retrieves the matching code hints based on the given query and choices array.
+     *
+     * @param {string} query - The search query to match against choices.
+     * @param {Array<string>} choices - The list of possible code hints.
+     * @param {object} [options] - An optional object to specify additional search options.
+     * @param {number} options.limit - Maximum number of results to return
+     * @param {Array<string>} options.boostPrefixList -Optional, Will rank matching items in the choices to top
+     *          if query starts with the array. EG: on typing b, we have to show background-color
+     *          to top. So we pass in ["background-color"] as boost prefix option along with other
+     *          css properties that we want to boost.
+     * @param {boolean} options.onlyContiguous - is set, will only include contiguous results.
+     *          ie: test-<bac>kcol is ok, test-<ba>ck<c>ol is not
+     * @return {Array<string>} - An array of matching code hints.
+     */
+    function codeHintsSort(query, choices, options) {
+        let choice;
+        let results = [];
+        options = options || {};
+        for(let i=0; i<choices.length; i++) {
+            choice = choices[i];
+            const result = stringMatch(choice, query, codeHintsMatcherOptions);
+            if (result) {
+                result.sourceIndex = i;
+                if(!query){
+                    delete result.stringRanges; // for empty query like "", we dont want to show any string ranges
+                }
+                results.push(result);
+            }
+        }
+        basicMatchSort(results);
+        results = _codeHintsRelevanceSort(results, query, options.boostPrefixList || [],
+            options.limit, options.onlyContiguous);
+        if(!query){
+            return results;
+        }
+        for(let result of results) {
+            const ranges = _computeMatchingRanges(query, result.label);
+            if(ranges){
+                result.stringRanges = ranges;
+            }
+        }
+        return results;
+    }
+
     /**
      * A StringMatcher provides an interface to the stringMatch function with built-in
      * caching. You should use a StringMatcher for the lifetime of queries over a
@@ -991,5 +1222,6 @@ define(function (require, exports, module) {
     exports.stringMatch             = stringMatch;
     exports.basicMatchSort          = basicMatchSort;
     exports.multiFieldSort          = multiFieldSort;
+    exports.codeHintsSort           = codeHintsSort;
     exports.StringMatcher           = StringMatcher;
 });

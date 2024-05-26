@@ -18,8 +18,6 @@
  *
  */
 
-/*global Phoenix*/
-
 define(function (require, exports, module) {
     const NotificationUI = require("widgets/NotificationUI"),
         Commands = require("command/Commands"),
@@ -279,10 +277,16 @@ define(function (require, exports, module) {
             }
             let surveyJSON = await fetch(surveyLinksURL);
             surveyJSON = await surveyJSON.json();
+            if(Phoenix.isNativeApp && surveyJSON.desktop) {
+                surveyJSON = {
+                    newUser: surveyJSON.desktop.newUser || surveyJSON.newUser,
+                    powerUser: surveyJSON.desktop.powerUser || surveyJSON.powerUser
+                };
+            }
             surveyJSON.newUser && _showGeneralSurvey(surveyJSON.newUser);
             surveyJSON.powerUser && _showPowerUserSurvey(surveyJSON.powerUser);
         } catch (e) {
-            console.error("Error fetching survey link", surveyLinksURL);
+            console.error("Error fetching survey link", surveyLinksURL, e);
             Metrics.countEvent(Metrics.EVENT_TYPE.USER, "survey", "fetchError", 1);
         }
     }

@@ -2,6 +2,7 @@
  * GNU AGPL-3.0 License
  *
  * Copyright (c) 2021 - present core.ai . All rights reserved.
+ * Original work Copyright (c) 2012 - 2021 Adobe Systems Incorporated. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License as published by
@@ -18,18 +19,13 @@
  *
  */
 
-/*global Phoenix, WorkerComm, JSHINT*/
+// Parts of this file is adapted from https://github.com/cfjedimaster/brackets-jshint
 
-importScripts(`${Phoenix.baseURL}thirdparty/jshint.js`);
+/*global path*/
 
-(function () {
-    function jsHint(params) {
-        let lintResult = JSHINT(params.text, params.options);
-        return {
-            lintResult: lintResult,
-            errors: JSHINT.errors
-        };
-    }
-
-    WorkerComm.setExecHandler("jsHint", jsHint);
-}());
+/**
+ * Provides JSLint results via the core linting extension point
+ */
+define(function (require, exports, module) {
+    require("JSHint");
+});

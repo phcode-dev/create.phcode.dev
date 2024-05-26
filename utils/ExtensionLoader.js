@@ -31,7 +31,7 @@
  *          extension root.
  */
 // jshint ignore: start
-/*global logger, Phoenix*/
+/*global logger, path*/
 /*eslint-env es6*/
 /*eslint no-console: 0*/
 /*eslint strict: ["error", "global"]*/
@@ -49,11 +49,14 @@ define(function (require, exports, module) {
         ExtensionUtils = require("utils/ExtensionUtils"),
         ThemeManager   = require("view/ThemeManager"),
         UrlParams      = require("utils/UrlParams").UrlParams,
+        NodeUtils = require("utils/NodeUtils"),
         PathUtils      = require("thirdparty/path-utils/path-utils"),
         DefaultExtensionsList = JSON.parse(require("text!extensions/default/DefaultExtensions.json"))
             .defaultExtensionsList;
 
     const customExtensionLoadPaths = {};
+
+    const _DELETED_EXTENSION_FILE_MARKER = "_phcode_extension_marked_for_delete";
 
     // default async initExtension timeout
     var EXTENSION_LOAD_TIMOUT_SECONDS = 60,
@@ -208,17 +211,24 @@ define(function (require, exports, module) {
     }
     const savedFSlib = window.fs;
 
+    function _loadNodeExtension(name, extensionMainPath, nodeConfig) {
+        const mainPlatformPath = Phoenix.fs.getTauriPlatformPath(extensionMainPath);
+        console.log("Loading node extension for " + name, extensionMainPath, ":", mainPlatformPath, nodeConfig);
+        NodeUtils._loadNodeExtensionModule(mainPlatformPath); // let load errors get reported to bugsnag
+    }
+
     /**
      * Loads the extension module that lives at baseUrl into its own Require.js context
      *
      * @param {!string} name, used to identify the extension
      * @param {!{baseUrl: string}} config object with baseUrl property containing absolute path of extension
-     * @param {!string} entryPoint, name of the main js file to load
+     * @param {string} entryPoint name of the main js file to load
+     * @param {Object} metadata
      * @return {!$.Promise} A promise object that is resolved when the extension is loaded, or rejected
      *              if the extension fails to load or throws an exception immediately when loaded.
      *              (Note: if extension contains a JS syntax error, promise is resolved not rejected).
      */
-    function loadExtensionModule(name, config, entryPoint) {
+    function loadExtensionModule(name, config, entryPoint, metadata) {
         let extensionConfig = {
             context: name,
             baseUrl: config.baseUrl,
@@ -243,7 +253,24 @@ define(function (require, exports, module) {
             // Create new RequireJS context and load extension entry point
             var extensionRequire = brackets.libRequire.config(mergedConfig),
                 extensionRequireDeferred = new $.Deferred();
-
+            if(!isDefaultExtensionModule && config.nativeDir && metadata.nodeConfig){
+                if(!Phoenix.isNativeApp && metadata.nodeConfig.nodeIsRequired) {
+                    extensionRequireDeferred.reject(
+                        new Error(`Extension ${name} cannot be loaded in browser as it needs node(nodeConfig.nodeIsRequired:true)`));
+                    return extensionRequireDeferred.promise();
+                }
+                if(Phoenix.isNativeApp) {
+                    if(!metadata.nodeConfig.main){
+                        extensionRequireDeferred.reject(
+                            new Error(`Extension ${name} doesnt specify a main file(nodeConfig.main) in package.json!`));
+                        return extensionRequireDeferred.promise();
+                    }
+                    _loadNodeExtension(name, path.join(config.nativeDir, metadata.nodeConfig.main),
+                        metadata.nodeConfig);
+                } else {
+                    console.log(`Extension ${name} optionally needs node. Node not loaded in browser.`);
+                }
+            }
             contexts[name] = extensionRequire;
             extensionRequire([entryPoint], extensionRequireDeferred.resolve, extensionRequireDeferred.reject);
 
@@ -338,7 +365,7 @@ define(function (require, exports, module) {
                 }
 
                 if (!metadata.disabled) {
-                    return loadExtensionModule(name, config, entryPoint);
+                    return loadExtensionModule(name, config, entryPoint, metadata);
                 }
                 return new $.Deferred().reject("disabled").promise();
 
@@ -425,6 +452,51 @@ define(function (require, exports, module) {
         return result.promise();
     }
 
+    async function _removeExtensionsMarkedForDelete(directory, contents) {
+        let extensions = [];
+        let promises = [];
+
+        for (let extensionEntry of contents) {
+            try {
+                if (extensionEntry.isDirectory) {
+                    const extensionName = extensionEntry.name;
+                    let markedRemove = FileSystem.getFileForPath(
+                        path.join(directory, extensionName, _DELETED_EXTENSION_FILE_MARKER));
+
+                    // Push the promise to the array without awaiting it
+                    promises.push(markedRemove.existsAsync().then(deleteMarkerExists => {
+                        if (!deleteMarkerExists) {
+                            extensions.push(extensionName);
+                        } else {
+                            return new Promise((resolve) => {
+                                // this never rejects. if we cant process, we continue with other extensions.
+                                extensionEntry.unlink(err => {
+                                    if (err) {
+                                        console.error("Error removing extension marked for removal:",
+                                            extensionName, extensionEntry.fullPath, err);
+                                        resolve(err);
+                                    } else {
+                                        console.log("Removed extension marked for delete:",
+                                            extensionName, extensionEntry.fullPath);
+                                        resolve();
+                                    }
+                                });
+                            });
+                        }
+                    }));
+                }
+            } catch (e) {
+                console.error("Error processing extension path:", extensionEntry);
+            }
+        }
+
+        // Await all promises concurrently
+        await Promise.all(promises);
+
+        return extensions;
+    }
+
+
     /**
      * @private
      * Loads a file entryPoint from each extension folder within the baseUrl into its own Require.js context
@@ -438,40 +510,33 @@ define(function (require, exports, module) {
     function _loadAll(directory, entryPoint, processExtension) {
         var result = new $.Deferred();
 
-        FileSystem.getDirectoryForPath(directory).getContents(function (err, contents) {
-            if (!err) {
-                var i,
-                    extensions = [];
-
-                for (i = 0; i < contents.length; i++) {
-                    if (contents[i].isDirectory) {
-                        // FUTURE (JRB): read package.json instead of just using the entrypoint "main".
-                        // Also, load sub-extensions defined in package.json.
-                        extensions.push(contents[i].name);
-                    }
-                }
-
-                if (extensions.length === 0) {
-                    result.resolve();
-                    return;
-                }
-
-                Async.doInParallel(extensions, function (item) {
-                    var extConfig = {
-                        // we load user installed extensions in file system from our virtual/asset server URL
-                        baseUrl: Phoenix.VFS.getVirtualServingURLForPath(directory + "/" + item),
-                        paths: {}
-                    };
-                    console.log("Loading Extension from virtual fs: ", extConfig);
-                    return processExtension(item, extConfig, entryPoint);
-                }).always(function () {
-                    // Always resolve the promise even if some extensions had errors
-                    result.resolve();
-                });
-            } else {
+        FileSystem.getDirectoryForPath(directory).getContents( async function (err, contents) {
+            if (err) {
                 console.error("[Extension] Error -- could not read native directory: " + directory);
                 result.reject();
+                return;
             }
+
+            const extensions = await _removeExtensionsMarkedForDelete(directory, contents);
+
+            if (extensions.length === 0) {
+                result.resolve();
+                return;
+            }
+
+            Async.doInParallel(extensions, function (item) {
+                const extConfig = {
+                    // we load user installed extensions in file system from our virtual/asset server URL
+                    baseUrl: Phoenix.VFS.getVirtualServingURLForPath(directory + "/" + item),
+                    nativeDir: directory + "/" + item,
+                    paths: {}
+                };
+                console.log("Loading Extension from virtual fs: ", extConfig);
+                return processExtension(item, extConfig, entryPoint);
+            }).always(function () {
+                // Always resolve the promise even if some extensions had errors
+                result.resolve();
+            });
         });
 
         return result.promise();
@@ -520,7 +585,8 @@ define(function (require, exports, module) {
     function loadExtensionFromNativeDirectory(directory) {
         logger.leaveTrail("loading custom extension from path: " + directory);
         const extConfig = {
-            baseUrl: Phoenix.VFS.getVirtualServingURLForPath(directory.replace(/\/$/, ""))
+            baseUrl: Phoenix.VFS.getVirtualServingURLForPath(directory.replace(/\/$/, "")),
+            nativeDir: directory
         };
         return loadExtension("ext" + directory.replace("/", "-"), // /fs/user/extpath to ext-fs-user-extpath
             extConfig, 'main');
@@ -777,6 +843,9 @@ define(function (require, exports, module) {
     // unit tests
     exports._setInitExtensionTimeout = _setInitExtensionTimeout;
     exports._getInitExtensionTimeout = _getInitExtensionTimeout;
+
+    // private internal usage
+    exports._DELETED_EXTENSION_FILE_MARKER = _DELETED_EXTENSION_FILE_MARKER;
 
     // public API
     exports.init = init;
