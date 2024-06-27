@@ -78,7 +78,8 @@ async function openURLInPhoenixWindow(url, {
             minHeight: minHeight || 600,
             width: width || defaultWidth,
             minWidth: minWidth || 800,
-            acceptFirstMouse: acceptFirstMouse === undefined ? true : acceptFirstMouse
+            acceptFirstMouse: acceptFirstMouse === undefined ? true : acceptFirstMouse,
+            fileDropEnabled: false
         });
         tauriWindow.isTauriWindow = true;
         return tauriWindow;
@@ -101,6 +102,9 @@ Phoenix.libs = {
     iconv: fs.utils.iconv,
     picomatch: fs.utils.picomatch
 };
+
+// global API is only usable/stable after App init
+Phoenix.globalAPI = {};
 
 Phoenix.app = {
     getNodeState: function (cbfn){

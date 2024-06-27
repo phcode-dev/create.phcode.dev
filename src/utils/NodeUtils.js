@@ -92,10 +92,47 @@ define(function (require, exports, module) {
         return utilsConnector.execPeer("_npmInstallInFolder", {moduleNativeDir});
     }
 
+    async function getEnvironmentVariable(varName) {
+        if(!Phoenix.isNativeApp) {
+            throw new Error("getEnvironmentVariable not available in browser");
+        }
+        return utilsConnector.execPeer("getEnvironmentVariable", varName);
+    }
+
+    async function ESLintFile(text, fullFilePath, projectFullPath) {
+        if(!Phoenix.isNativeApp) {
+            throw new Error("ESLintFile not available in browser");
+        }
+        return utilsConnector.execPeer("ESLintFile", {
+            text,
+            fullFilePath: window.fs.getTauriPlatformPath(fullFilePath),
+            projectFullPath: window.fs.getTauriPlatformPath(projectFullPath)
+        });
+    }
+
     if(NodeConnector.isNodeAvailable()) {
         // todo we need to update the strings if a user extension adds its translations. Since we dont support
         // node extensions for now, should consider when we support node extensions.
         _updateNodeLocaleStrings();
+    }
+
+    try {
+        if(Phoenix.isTestWindow) {
+            if(Phoenix.isNativeApp) {
+                async function _setIsTestWindowGitHubActions() {
+                    const actionsEnv = await utilsConnector.execPeer("getEnvironmentVariable", "GITHUB_ACTIONS");
+                    Phoenix.isTestWindowGitHubActions = !!actionsEnv;
+                }
+                _setIsTestWindowGitHubActions().catch(e=>{
+                    console.error("Error setting Phoenix.isTestWindowGitHubActions", e);
+                });
+            } else {
+                const urlSearchParams = new window.URLSearchParams(window.location.search || "");
+                Phoenix.isTestWindowGitHubActions = urlSearchParams.get("isTestWindowGitHubActions") === "yes";
+            }
+        }
+    } catch (e) {
+        console.error("Error setting Phoenix.isTestWindowGitHubActions", e);
     }
 
     // private apis
@@ -107,6 +144,8 @@ define(function (require, exports, module) {
     exports.getPhoenixBinaryVersion = getPhoenixBinaryVersion;
     exports.getLinuxOSFlavorName = getLinuxOSFlavorName;
     exports.openUrlInBrowser = openUrlInBrowser;
+    exports.ESLintFile = ESLintFile;
+    exports.getEnvironmentVariable = getEnvironmentVariable;
     exports.isNodeReady = NodeConnector.isNodeReady;
 
     window.NodeUtils = exports;

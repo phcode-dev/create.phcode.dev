@@ -19,7 +19,7 @@
  *
  */
 
-/*global jsPromise*/
+/*global jsPromise, path*/
 
 /**
  * Manages linters and other code inspections on a per-language basis. Provides a UI and status indicator for
@@ -43,6 +43,7 @@ define(function (require, exports, module) {
         CommandManager          = require("command/CommandManager"),
         DocumentManager         = require("document/DocumentManager"),
         EditorManager           = require("editor/EditorManager"),
+        Dialogs                 = require("widgets/Dialogs"),
         Editor                  = require("editor/Editor").Editor,
         MainViewManager         = require("view/MainViewManager"),
         LanguageManager         = require("language/LanguageManager"),
@@ -56,10 +57,13 @@ define(function (require, exports, module) {
         PanelTemplate           = require("text!htmlContent/problems-panel.html"),
         ResultsTemplate         = require("text!htmlContent/problems-panel-table.html"),
         Mustache                = require("thirdparty/mustache/mustache"),
-        QuickViewManager        = require("features/QuickViewManager");
+        QuickViewManager  = require("features/QuickViewManager"),
+        Metrics           = require("utils/Metrics");
 
     const CODE_INSPECTION_GUTTER_PRIORITY      = 500,
         CODE_INSPECTION_GUTTER = "code-inspection-gutter";
+
+    const EDIT_ORIGIN_LINT_FIX = "lint_fix";
 
     const INDICATOR_ID = "status-inspection";
 
@@ -73,12 +77,20 @@ define(function (require, exports, module) {
         META: "meta"
     };
 
-    function _getIconClassForType(type) {
+    function _getIconClassForType(type, isFixable) {
         switch (type) {
-        case Type.ERROR: return "line-icon-problem_type_error fa-solid fa-times-circle";
-        case Type.WARNING: return "line-icon-problem_type_warning fa-solid fa-exclamation-triangle";
-        case Type.META: return "line-icon-problem_type_info fa-solid fa-info-circle";
-        default: return "line-icon-problem_type_info fa-solid fa-info-circle";
+        case Type.ERROR: return isFixable ?
+            "line-icon-problem_type_error fa-solid fa-wrench":
+            "line-icon-problem_type_error fa-solid fa-times-circle";
+        case Type.WARNING: return isFixable ?
+            "line-icon-problem_type_warning fa-solid fa-wrench":
+            "line-icon-problem_type_warning fa-solid fa-exclamation-triangle";
+        case Type.META: return isFixable ?
+            "line-icon-problem_type_info fa-solid fa-wrench":
+            "line-icon-problem_type_info fa-solid fa-info-circle";
+        default: return isFixable ?
+            "line-icon-problem_type_info fa-solid fa-wrench":
+            "line-icon-problem_type_info fa-solid fa-info-circle";
         }
     }
 
@@ -115,6 +127,8 @@ define(function (require, exports, module) {
      * @type {$.Element}
      */
     var $problemsPanel;
+
+    let $fixAllBtn;
 
     /**
      * @private the panelView
@@ -344,8 +358,10 @@ define(function (require, exports, module) {
      * @param {Number} numProblems - total number of problems across all providers
      * @param {Array.<{name:string, scanFileAsync:?function(string, string):!{$.Promise}, scanFile:?function(string, string):Object}>} providersReportingProblems - providers that reported problems
      * @param {boolean} aborted - true if any provider returned a result with the 'aborted' flag set
+     * @param fileName
      */
-    function updatePanelTitleAndStatusBar(numProblems, providersReportingProblems, aborted) {
+    function updatePanelTitleAndStatusBar(numProblems, providersReportingProblems, aborted, fileName) {
+        $fixAllBtn.addClass("forced-hidden");
         var message, tooltip;
 
         if (providersReportingProblems.length === 1) {
@@ -354,13 +370,20 @@ define(function (require, exports, module) {
             $problemsPanelTable.find("tr").removeClass("forced-hidden");
 
             if (numProblems === 1 && !aborted) {
-                message = StringUtils.format(Strings.SINGLE_ERROR, providersReportingProblems[0].name);
+                message = documentFixes.size ?
+                    StringUtils.format(Strings.SINGLE_ERROR_FIXABLE, providersReportingProblems[0].name,
+                        documentFixes.size, fileName):
+                    StringUtils.format(Strings.SINGLE_ERROR, providersReportingProblems[0].name, fileName);
             } else {
                 if (aborted) {
                     numProblems += "+";
                 }
 
-                message = StringUtils.format(Strings.MULTIPLE_ERRORS, providersReportingProblems[0].name, numProblems);
+                message = documentFixes.size ?
+                    StringUtils.format(Strings.MULTIPLE_ERRORS_FIXABLE, numProblems,
+                        providersReportingProblems[0].name, documentFixes.size, fileName):
+                    StringUtils.format(Strings.MULTIPLE_ERRORS, numProblems,
+                        providersReportingProblems[0].name, fileName);
             }
         } else if (providersReportingProblems.length > 1) {
             $problemsPanelTable.find(".inspector-section").show();
@@ -369,21 +392,30 @@ define(function (require, exports, module) {
                 numProblems += "+";
             }
 
-            message = StringUtils.format(Strings.ERRORS_PANEL_TITLE_MULTIPLE, numProblems);
+            message = documentFixes.size ?
+                StringUtils.format(Strings.ERRORS_PANEL_TITLE_MULTIPLE_FIXABLE, numProblems,
+                    documentFixes.size, fileName):
+                StringUtils.format(Strings.ERRORS_PANEL_TITLE_MULTIPLE, numProblems, fileName);
         } else {
             return;
         }
 
         $problemsPanel.find(".title").text(message);
         tooltip = StringUtils.format(Strings.STATUSBAR_CODE_INSPECTION_TOOLTIP, message);
-        StatusBar.updateIndicator(INDICATOR_ID, true, "inspection-errors", tooltip);
+        let iconType = "inspection-errors";
+        if(documentFixes.size){
+            iconType =  "inspection-repair";
+            $fixAllBtn.removeClass("forced-hidden");
+        }
+
+        StatusBar.updateIndicator(INDICATOR_ID, true, iconType, tooltip);
     }
 
     function _getMarkOptions(error){
         switch (error.type) {
-        case Type.ERROR: return Editor.MARK_OPTION_UNDERLINE_ERROR;
-        case Type.WARNING: return Editor.MARK_OPTION_UNDERLINE_WARN;
-        case Type.META: return Editor.MARK_OPTION_UNDERLINE_INFO;
+        case Type.ERROR: return Editor.getMarkOptionUnderlineError();
+        case Type.WARNING: return Editor.getMarkOptionUnderlineWarn();
+        case Type.META: return Editor.getMarkOptionUnderlineInfo();
         }
     }
 
@@ -411,17 +443,20 @@ define(function (require, exports, module) {
      * @param ch - the character position of the error
      * @param type - The type of the marker. This is a string that can be one of the error types
      * @param message - The message that will be displayed when you hover over the marker.
+     * @param isFixable - true if we need to use the fix icon
      * @returns A DOM element.
      */
-    function _createMarkerElement(editor, line, ch, type, message) {
+    function _createMarkerElement(editor, line, ch, type, message, isFixable) {
         let $marker = $('<div><span>')
-            .attr('title', message)
+            .attr('title', (message || "").trim())
             .addClass(CODE_INSPECTION_GUTTER);
         $marker.click(function (){
             editor.setCursorPos(line, ch);
+            toggleCollapsed(false);
+            scrollToProblem(line);
         });
         $marker.find('span')
-            .addClass(_getIconClassForType(type))
+            .addClass(_getIconClassForType(type, isFixable))
             .addClass("brackets-inspection-gutter-marker")
             .html('&nbsp;');
         return $marker[0];
@@ -454,7 +489,11 @@ define(function (require, exports, module) {
         for(let lineno of Object.keys(gutterErrorMessages)){
             // We mark the line with the Highest priority icon. (Eg. error icon if same line has warnings and info)
             let highestPriorityMarkTypeSeen = Type.META;
+            let fixableMarkFound = false;
             let gutterMessage = gutterErrorMessages[lineno].reduce((prev, current)=>{
+                if(current.fixable || prev.fixable){
+                    fixableMarkFound = true;
+                }
                 if(_getMarkTypePriority(current.type) > _getMarkTypePriority(highestPriorityMarkTypeSeen)){
                     highestPriorityMarkTypeSeen = current.type;
                 }
@@ -463,7 +502,7 @@ define(function (require, exports, module) {
             let line = gutterErrorMessages[lineno][0].line,
                 ch = gutterErrorMessages[lineno][0].ch,
                 message = gutterMessage.message;
-            let marker = _createMarkerElement(editor, line, ch, highestPriorityMarkTypeSeen, message);
+            let marker = _createMarkerElement(editor, line, ch, highestPriorityMarkTypeSeen, message, fixableMarkFound);
             editor.setGutterMarker(line, CODE_INSPECTION_GUTTER, marker);
         }
         _populateDummyGutterElements(editor, 0, editor.getLastVisibleLine());
@@ -485,18 +524,91 @@ define(function (require, exports, module) {
         _populateDummyGutterElements(editor, from, to);
     }
 
+    function scrollToProblem(lineNumber) {
+        const $lineElement = $problemsPanelTable.find('td.line-number[data-line="' + lineNumber + '"]');
+        if ($lineElement.length) {
+            $lineElement[0].scrollIntoView({ behavior: 'instant', block: 'start' });
+            return $($lineElement[0]).parent();
+        }
+        return null;
+    }
+
+
     function getQuickView(editor, pos, token, line) {
         return new Promise((resolve, reject)=>{
             let codeInspectionMarks = editor.findMarksAt(pos, CODE_MARK_TYPE_INSPECTOR) || [];
-            let hoverMessage = '';
+            let $hoverMessage = $(`<div class="code-inspection-item"></div>`);
+            let quickViewPresent;
+            let startPos = {line: pos.line, ch: token.start},
+                endPos = {line: pos.line, ch: token.end};
             for(let mark of codeInspectionMarks){
-                hoverMessage = `${hoverMessage}${mark.message}<br/>`;
+                let $problemView;
+                quickViewPresent = true;
+                const fixID = `${mark.metadata}`;
+                let errorMessageHTML = `<a style="cursor:pointer;color: unset;">${_.escape(mark.message)}</a>`;
+                if(documentFixes.get(fixID)){
+                    $problemView = $(`<div class="code-inspection-quick-view-item">
+                        <i title="${Strings.CLICK_VIEW_PROBLEM}" style="margin-right: 3px;cursor: pointer;"
+                            class="${_getIconClassForType(mark.type, mark.isFixable)}"></i>
+                        <button class="btn btn-mini fix-problem-btn" style="margin-right: 5px;">${Strings.FIX}</button>
+                        ${errorMessageHTML}
+                        <button class="btn btn-mini copy-qv-error-text-btn" title="${Strings.COPY_ERROR}">
+                            <i class="fas fa-copy copy-qv-error-text-btn"></i>
+                        </button>
+                        <br/>
+                    </div>`);
+                    $problemView.find(".fix-problem-btn").click(()=>{
+                        Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "fixClick", "quickView");
+                        scrollToProblem(pos.line);
+                        _fixProblem(fixID);
+                    });
+                    $hoverMessage.append($problemView);
+                } else {
+                    $problemView = $(`<div class="code-inspection-quick-view-item">
+                        <i title="${Strings.CLICK_VIEW_PROBLEM}" style="margin-right: 5px; cursor: pointer;"
+                            class="${_getIconClassForType(mark.type, mark.isFixable)}"></i>
+                        ${errorMessageHTML}
+                        <button class="btn btn-mini copy-qv-error-text-btn" title="${Strings.COPY_ERROR}">
+                            <i class="fas fa-copy copy-qv-error-text-btn"></i>
+                        </button>
+                        <br/></div>`);
+                    $hoverMessage.append($problemView);
+                }
+                $problemView.click(function () {
+                    const selection = window.getSelection();
+                    if(selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+                        // the user may be trying to select text from the error in quick view, in which case we
+                        // shouldnt open the problems panel
+                        return;
+                    }
+                    toggleCollapsed(false);
+                    scrollToProblem(pos.line);
+                });
+                $problemView.find(".copy-qv-error-text-btn").click(function (evt) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    Phoenix.app.copyToClipboard(mark.message);
+                });
+                const markPos = mark.find();
+                if(markPos.from && markPos.from.line < startPos.line){
+                    startPos.line = markPos.from.line;
+                }
+                if(markPos.from && markPos.from.ch < startPos.ch){
+                    startPos.ch = markPos.from.ch;
+                }
+                if(markPos.to && markPos.to.line > endPos.line){
+                    endPos.line = markPos.to.line;
+                }
+                if(markPos.to && markPos.to.ch > endPos.ch){
+                    endPos.ch = markPos.to.ch;
+                }
             }
-            if(hoverMessage){
+            if(quickViewPresent){
+                Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "quickView", "shown");
                 resolve({
-                    start: {line: pos.line, ch: token.start},
-                    end: {line: pos.line, ch: token.end},
-                    content: `<div class="code-inspection-item">${hoverMessage}</div>`
+                    start: startPos,
+                    end: endPos,
+                    content: $hoverMessage
                 });
                 return;
             }
@@ -504,20 +616,40 @@ define(function (require, exports, module) {
         });
     }
 
+    let fixIDCounter = 1;
+    let documentFixes = new Map(), lastDocumentScanTimeStamp;
+    function _registerNewFix(editor, fix, providerName, maxOffset) {
+        if(!editor || !fix || !fix.rangeOffset) {
+            return null;
+        }
+        if(editor.document.lastChangeTimestamp !== lastDocumentScanTimeStamp){
+            // the document changed from the last time the fixes where registered, we have to
+            // invalidate all existing fixes in that case.
+            lastDocumentScanTimeStamp = editor.document.lastChangeTimestamp;
+            documentFixes.clear();
+        }
+        if(_isInvalidFix(fix, maxOffset)){
+            return null;
+        }
+        fixIDCounter++;
+        fix.providerName = providerName;
+        documentFixes.set(`${fixIDCounter}`, fix);
+        return fixIDCounter;
+    }
 
     /**
      * Adds gutter icons and squiggly lines under err/warn/info to editor after lint.
+     * also updates  the passed in resultProviderEntries with fixes that can be applied.
      * @param resultProviderEntries
      * @private
      */
-    function _updateEditorMarks(resultProviderEntries) {
+    function _updateEditorMarksAndFixResults(resultProviderEntries) {
         let editor = EditorManager.getCurrentFullEditor();
         if(!(editor && resultProviderEntries && resultProviderEntries.length)) {
             return;
         }
+        const maxOffset = editor.document.getText().length;
         editor.operation(function () {
-            editor.clearAllMarks(CODE_MARK_TYPE_INSPECTOR);
-            editor.clearGutter(CODE_INSPECTION_GUTTER);
             editor.off("viewportChange.codeInspection");
             editor.on("viewportChange.codeInspection", _editorVieportChangeHandler);
             let gutterErrorMessages = {};
@@ -526,25 +658,54 @@ define(function (require, exports, module) {
                 for (let error of errors) {
                     let line = error.pos.line || 0;
                     let ch = error.pos.ch || 0;
-                    let gutterMessage = gutterErrorMessages[line] || [];
-                    gutterMessage.push({message: error.message, type: error.type, line, ch});
-                    gutterErrorMessages[line] = gutterMessage;
+                    let fixable = false;
                     // add squiggly lines
                     if (_shouldMarkTokenAtPosition(editor, error)) {
                         let mark;
-                        if(error.endPos){
-                            mark = editor.markText(CODE_MARK_TYPE_INSPECTOR, error.pos, error.endPos,
-                                _getMarkOptions(error));
+                        const markOptions = _getMarkOptions(error);
+                        const fixID = _registerNewFix(editor, error.fix, resultProvider.provider.name, maxOffset);
+                        if(fixID) {
+                            markOptions.metadata = fixID;
+                            markOptions.isFixable = true;
+                            error.fix.id = fixID;
+                            fixable = true;
+                        }
+                        if(error.endPos && !editor.isSamePosition(error.pos, error.endPos)) {
+                            mark = editor.markText(CODE_MARK_TYPE_INSPECTOR, error.pos, error.endPos, markOptions);
                         } else {
-                            mark = editor.markToken(CODE_MARK_TYPE_INSPECTOR, error.pos, _getMarkOptions(error));
+                            mark = editor.markToken(CODE_MARK_TYPE_INSPECTOR, error.pos, markOptions);
                         }
                         mark.type = error.type;
                         mark.message = error.message;
                     }
+                    let gutterMessage = gutterErrorMessages[line] || [];
+                    gutterMessage.push({message: error.message, type: error.type, fixable, line, ch});
+                    gutterErrorMessages[line] = gutterMessage;
                 }
             }
             _updateGutterMarks(editor, gutterErrorMessages);
         });
+    }
+
+    const scrollPositionMap = new Map();
+
+    function _noProviderReturnedResults(currentDoc, fullFilePath) {
+        // No provider for current file
+        _hasErrors = false;
+        _currentPromise = null;
+        updatePanelTitleAndStatusBar(0, [], false,
+            fullFilePath ? path.basename(fullFilePath) : Strings.ERRORS_NO_FILE);
+        if(problemsPanel){
+            problemsPanel.hide();
+        }
+        const language = currentDoc && LanguageManager.getLanguageForPath(currentDoc.file.fullPath);
+        if (language) {
+            StatusBar.updateIndicator(INDICATOR_ID, true, "inspection-disabled",
+                StringUtils.format(Strings.NO_LINT_AVAILABLE, language.getName()));
+        } else {
+            StatusBar.updateIndicator(INDICATOR_ID, true, "inspection-disabled", Strings.NOTHING_TO_LINT);
+        }
+        setGotoEnabled(false);
     }
 
     /**
@@ -574,17 +735,34 @@ define(function (require, exports, module) {
             return !provider.canInspect || provider.canInspect(currentDoc.file.fullPath);
         });
 
+        let editor = EditorManager.getCurrentFullEditor(), fullFilePath;
+        if(editor){
+            lastDocumentScanTimeStamp = editor.document.lastChangeTimestamp;
+            documentFixes.clear();
+            fullFilePath = editor.document.file.fullPath;
+        }
+
         if (providerList && providerList.length) {
-            var numProblems = 0;
-            var aborted = false;
-            var allErrors = [];
-            var html;
-            var providersReportingProblems = [];
-            $problemsPanelTable.empty();
+            let numProblems = 0,
+                aborted = false,
+                allErrors = [],
+                html,
+                providersReportingProblems = [];
+            scrollPositionMap.set($problemsPanelTable.lintFilePath || fullFilePath, $problemsPanelTable.scrollTop());
 
             // run all the providers registered for this file type
             (_currentPromise = inspectFile(currentDoc.file, providerList)).then(function (results) {
-                _updateEditorMarks(results);
+                // filter out any ignored results
+                results = results.filter(function (providerResult) {
+                    return !providerResult.result || !providerResult.result.isIgnored;
+                });
+                if(!results.length) {
+                    _noProviderReturnedResults(currentDoc, fullFilePath);
+                    return;
+                }
+                editor.clearAllMarks(CODE_MARK_TYPE_INSPECTOR);
+                editor.clearGutter(CODE_INSPECTION_GUTTER);
+                _updateEditorMarksAndFixResults(results);
                 // check if promise has not changed while inspectFile was running
                 if (this !== _currentPromise) {
                     return;
@@ -630,7 +808,7 @@ define(function (require, exports, module) {
                                 numProblems++;
                             }
 
-                            error.iconClass = _getIconClassForType(error.type);
+                            error.iconClass = _getIconClassForType(error.type, error.fix && error.fix.id);
 
                             // Hide the errors when the provider is collapsed.
                             error.display = isExpanded ? "" : "forced-hidden";
@@ -656,61 +834,92 @@ define(function (require, exports, module) {
                 // Update results table
                 html = Mustache.render(ResultsTemplate, {Strings: Strings, reportList: allErrors});
 
+                $problemsPanelTable.lintFilePath = fullFilePath;
                 $problemsPanelTable
                     .empty()
-                    .append(html)
-                    .scrollTop(0);  // otherwise scroll pos from previous contents is remembered
+                    .append(html);  // otherwise scroll pos from previous contents is remembered
 
                 if (!_collapsed) {
                     problemsPanel.show();
                 }
 
-                updatePanelTitleAndStatusBar(numProblems, providersReportingProblems, aborted);
+                updatePanelTitleAndStatusBar(numProblems, providersReportingProblems, aborted,
+                    path.basename(fullFilePath));
                 setGotoEnabled(true);
 
+                const scrollPosition = scrollPositionMap.get(fullFilePath) || 0;
+                $problemsPanelTable.scrollTop(scrollPosition);
                 PerfUtils.addMeasurement(perfTimerDOM);
             });
 
         } else {
-            // No provider for current file
-            _hasErrors = false;
-            _currentPromise = null;
-            if(problemsPanel){
-                problemsPanel.hide();
-            }
-            var language = currentDoc && LanguageManager.getLanguageForPath(currentDoc.file.fullPath);
-            if (language) {
-                StatusBar.updateIndicator(INDICATOR_ID, true, "inspection-disabled", StringUtils.format(Strings.NO_LINT_AVAILABLE, language.getName()));
-            } else {
-                StatusBar.updateIndicator(INDICATOR_ID, true, "inspection-disabled", Strings.NOTHING_TO_LINT);
-            }
-            setGotoEnabled(false);
+            _noProviderReturnedResults(currentDoc, fullFilePath);
         }
     }
 
     let gutterRegistrationInProgress = false;
 
     /**
-     * The provider is passed the text of the file and its fullPath. Providers should not assume
-     * that the file is open (i.e. DocumentManager.getOpenDocumentForPath() may return null) or
-     * that the file on disk matches the text given (file may have unsaved changes).
+     * Registers a provider for a specific language to inspect files and provide linting results.
+     *
+     * The provider is passed the text of the file and its full path. Providers should not assume that
+     * the file is open (i.e., `DocumentManager.getOpenDocumentForPath()` may return `null`) or that the
+     * file on disk matches the text given (the file may have unsaved changes).
      *
      * Registering any provider for the "javascript" language automatically unregisters the built-in
-     * Brackets JSLint provider. This is a temporary convenience until UI exists for disabling
+     * Brackets JSLint provider. This is a temporary convenience until a UI exists for disabling
      * registered providers.
      *
-     * Providers implement scanFile() if results are available synchronously, or scanFileAsync() if results
-     * may require an async wait (if both are implemented, scanFile() is ignored). scanFileAsync() returns
-     * a {$.Promise} object resolved with the same type of value as scanFile() is expected to return.
-     * Rejecting the promise is treated as an internal error in the provider.
+     * Providers must implement `canInspect()`, `scanFile()`, or `scanFileAsync()`. If both `scanFile()`
+     * and `scanFileAsync()` are implemented, `scanFile()` is ignored.
      *
-     * @param {string} languageId
-     * @param {{name:string, scanFileAsync:?function(string, string):!{$.Promise},
-     *         scanFile:?function(string, string):?{errors:!Array, aborted:boolean}}} provider
+     * - `canInspect(fullPath)`: A synchronous call to determine if the file can be scanned by this provider.
+     * - `scanFile(text, fullPath)`: A synchronous function returning linting results or `null`.
+     * - `scanFileAsync(text, fullPath)`: An asynchronous function returning a jQuery Promise resolved with
+     *   the same type of value as `scanFile()`. Rejecting the promise is treated as an internal error in the provider.
      *
-     * Each error is: { pos:{line,ch}, endPos:?{line,ch}, message:string, type:?Type }
-     * If type is unspecified, Type.WARNING is assumed.
-     * If no errors found, return either null or an object with a zero-length `errors` array.
+     * Each error object in the results should have the following structure:
+     *              { pos:{line,ch},
+     *                endPos:?{line,ch},
+     *                message:string,
+     *                htmlMessage:string,
+     *                type:?Type ,
+     *                fix: { // an optional fix, if present will show the fix button
+     *                     replace: "text to replace the offset given below",
+     *                     rangeOffset: {
+     *                         start: number,
+     *                         end: number
+     *                }}}
+     * @typedef {Object} Error
+     * @property {Object} pos - The start position of the error.
+     * @property {number} pos.line - The line number (0-based).
+     * @property {number} pos.ch - The character position within the line (0-based).
+     * @property {?Object} endPos - The end position of the error.
+     * @property {number} endPos.line - The end line number (0-based).
+     * @property {number} endPos.ch - The end character position within the line (0-based).
+     * @property {string} message - The error message to be displayed as text.
+     * @property {string} htmlMessage - The error message to be displayed as HTML.
+     * @property {?Type} type - The type of the error. Defaults to `Type.WARNING` if unspecified.
+     * @property {?Object} fix - An optional fix object.
+     * @property {string} fix.replace - The text to replace the error with.
+     * @property {Object} fix.rangeOffset - The range within the text to replace.
+     * @property {number} fix.rangeOffset.start - The start offset of the range.
+     * @property {number} fix.rangeOffset.end - The end offset of the range.
+     *
+     * If no errors are found, return either `null`(treated as file is problem free) or an object with a
+     * zero-length `errors` array. Always use `message` to safely display the error as text. If you want to display HTML
+     * error message, then explicitly use `htmlMessage` to display it. Both `message` and `htmlMessage` can
+     * be used simultaneously.
+     *
+     * After scanning the file, if you need to omit the lint result, return or resolve with `{isIgnored: true}`.
+     * This prevents the file from being marked with a no errors tick mark in the status bar and excludes the linter
+     * from the problems panel.
+     *
+     * @param {string} languageId - The language ID for which the provider is registered.
+     * @param {Object} provider - The provider object.
+     * @param {string} provider.name - The name of the provider.
+     * @param {?function(string, string): { errors: Array<Error>, aborted: boolean }} provider.scanFile - Synchronous scan function.
+     * @param {?function(string, string): jQuery.Promise} provider.scanFileAsync - Asynchronous scan function returning a Promise.
      */
     function register(languageId, provider) {
         if (!_providers[languageId]) {
@@ -804,6 +1013,24 @@ define(function (require, exports, module) {
         run();
     }
 
+    let lastRunTime;
+    $(window.document).on("mousemove", ()=>{
+        if(Phoenix.isTestWindow){
+            return;
+        }
+        const editor = EditorManager.getCurrentFullEditor();
+        if(!editor || editor.document.lastChangeTimestamp === lastDocumentScanTimeStamp) {
+            return;
+        }
+        const currentTime = Date.now();
+        if(lastRunTime && (currentTime - lastRunTime) < 1000) {
+            // we dont run the linter on mouse operations more than 1 times a second.
+            return;
+        }
+        lastRunTime = currentTime;
+        run();
+    });
+
     /**
      * Toggle the collapsed state for the panel. This explicitly collapses the panel (as opposed to
      * the auto collapse due to files with no errors & filetypes with no provider). When explicitly
@@ -876,6 +1103,61 @@ define(function (require, exports, module) {
         description: Strings.DESCRIPTION_USE_PREFERED_ONLY
     });
 
+    function _isInvalidFix(fixDetails, maxOffset) {
+        return (!_.isNumber(fixDetails.rangeOffset.start) || !_.isNumber(fixDetails.rangeOffset.end) ||
+            fixDetails.rangeOffset.start < 0 || fixDetails.rangeOffset.end < 0 ||
+            fixDetails.rangeOffset.start > maxOffset || fixDetails.rangeOffset.end > maxOffset ||
+            typeof fixDetails.replaceText !== "string");
+    }
+
+    function _fixProblem(fixID) {
+        const fixDetails = documentFixes.get(fixID);
+        const editor = EditorManager.getCurrentFullEditor();
+        const maxOffset = editor.document.getText().length;
+        if(!editor || !fixDetails || editor.document.lastChangeTimestamp !== lastDocumentScanTimeStamp) {
+            Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "fixFail", "dialogShown");
+            Dialogs.showErrorDialog(Strings.CANNOT_FIX_TITLE, Strings.CANNOT_FIX_MESSAGE);
+        } else if(_isInvalidFix(fixDetails, maxOffset)){
+            Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "fixFail", "invalid");
+            console.error("Invalid fix:", fixDetails); // this should never happen as we filter the fix while inserting
+        } else {
+            const from = editor.posFromIndex(fixDetails.rangeOffset.start),
+                to =  editor.posFromIndex(fixDetails.rangeOffset.end);
+            editor.setSelection(from, to, true, Editor.BOUNDARY_BULLSEYE, EDIT_ORIGIN_LINT_FIX);
+            editor.replaceSelection(fixDetails.replaceText, "around");
+        }
+        MainViewManager.focusActivePane();
+        run();
+    }
+
+    function _fixAllProblems() {
+        const editor = EditorManager.getCurrentFullEditor();
+        if(!editor || editor.document.lastChangeTimestamp !== lastDocumentScanTimeStamp) {
+            Dialogs.showErrorDialog(Strings.CANNOT_FIX_TITLE, Strings.CANNOT_FIX_MESSAGE);
+            return;
+        }
+        if(!documentFixes.size){
+            return;
+        }
+        const replacements = [];
+        const maxOffset = editor.document.getText().length;
+        for(let fixDetails of documentFixes.values()){
+            if(_isInvalidFix(fixDetails, maxOffset)){
+                console.error("Invalid fix:", fixDetails); // this should never happen
+            }
+            replacements.push({
+                from: editor.posFromIndex(fixDetails.rangeOffset.start),
+                to: editor.posFromIndex(fixDetails.rangeOffset.end),
+                text: fixDetails.replaceText
+            });
+        }
+        editor.replaceMultipleRanges(replacements, EDIT_ORIGIN_LINT_FIX);
+        const finalCursor = replacements[replacements.length - 1].from;
+        editor.setCursorPos(finalCursor.line, finalCursor.ch);
+        MainViewManager.focusActivePane();
+        run();
+    }
+
     // Initialize items dependent on HTML DOM
     AppInit.htmlReady(function () {
         Editor.registerGutter(CODE_INSPECTION_GUTTER, CODE_INSPECTION_GUTTER_PRIORITY);
@@ -883,6 +1165,11 @@ define(function (require, exports, module) {
         var panelHtml = Mustache.render(PanelTemplate, Strings);
         problemsPanel = WorkspaceManager.createBottomPanel("errors", $(panelHtml), 100);
         $problemsPanel = $("#problems-panel");
+        $fixAllBtn = $problemsPanel.find(".problems-fix-all-btn");
+        $fixAllBtn.click(()=>{
+            Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "fixAllClick", "panel");
+            _fixAllProblems();
+        });
 
         function checkSelectionInsideElement(range, element) {
             if(!range || range.endOffset === range.startOffset) {
@@ -898,11 +1185,27 @@ define(function (require, exports, module) {
         var $selectedRow;
         $problemsPanelTable = $problemsPanel.find(".table-container")
             .on("click", "tr", function (e) {
-                if ($(e.target).hasClass('table-copy-err-button')) {
+                if ($(e.target).hasClass('ph-copy-problem')) {
                     // Retrieve the message from the data attribute of the clicked element
-                    const message = $(e.target).data('message');
+                    let message = $(e.target).parent().parent().find(".line-text").text();
+                    if(!message){
+                        message = $(e.target).parent().parent().parent().find(".line-text").text();
+                    }
                     message && Phoenix.app.copyToClipboard(message);
+                    e.preventDefault();
+                    e.stopPropagation();
+                    MainViewManager.focusActivePane();
+                    return;
                 }
+                if ($(e.target).hasClass('ph-fix-problem')) {
+                    // Retrieve the message from the data attribute of the clicked element
+                    Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "fixClick", "panel");
+                    _fixProblem("" + $(e.target).data("fixid"));
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+
                 if ($selectedRow) {
                     $selectedRow.removeClass("selected");
                 }
@@ -977,6 +1280,14 @@ define(function (require, exports, module) {
         }, ["all"]);
     });
 
+    AppInit.appReady(function () {
+        // on boot the linter is not somehow showing the lint editor underlines at first time. So we trigger a run
+        // after 2 seconds
+        if(!Phoenix.isTestWindow) {
+            setTimeout(run, 2000);
+        }
+    });
+
     // Testing
     exports._unregisterAll          = _unregisterAll;
     exports._PREF_ASYNC_TIMEOUT     = PREF_ASYNC_TIMEOUT;
@@ -992,4 +1303,5 @@ define(function (require, exports, module) {
     exports.requestRun                  = run;
     exports.getProvidersForPath         = getProvidersForPath;
     exports.getProviderIDsForLanguage   = getProviderIDsForLanguage;
+    exports.scrollToProblem             = scrollToProblem;
 });

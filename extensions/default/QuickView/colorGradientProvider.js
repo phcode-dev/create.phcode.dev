@@ -29,10 +29,13 @@ define(function (require, exports, module) {
         CSSUtils            = brackets.getModule("language/CSSUtils"),
         TokenUtils          = brackets.getModule("utils/TokenUtils"),
         AppInit             = brackets.getModule("utils/AppInit"),
+        EditorManager       = brackets.getModule("editor/EditorManager"),
         QuickView           = brackets.getModule("features/QuickViewManager"),
         Strings             = brackets.getModule("strings"),
         Metrics             = brackets.getModule("utils/Metrics"),
         CommandManager      = brackets.getModule("command/CommandManager"),
+        MainViewManager     = brackets.getModule("view/MainViewManager"),
+        FileViewController  = brackets.getModule("project/FileViewController"),
         Commands            = brackets.getModule("command/Commands");
 
     let styleLanguages = ["css", "text/x-less", "sass", "text/x-scss", "stylus"];
@@ -288,15 +291,37 @@ define(function (require, exports, module) {
                 //          (used by unit tests) to match so normalize the css for both
                 let tooltip = gradientMatch.match ? "" : Strings.TOOLTIP_CLICK_TO_EDIT_COLOR;
                 previewCSS = normalizeGradientExpressionForQuickview(ensureHexFormat(previewCSS));
-                let preview = $(`<div id='quick-view-color-swatch' data-for-test='${previewCSS}' class='color-swatch'
-                        style='background: ${previewCSS}' title="${tooltip}">
-                        </div>`);
+                let preview = $(`<div title="${tooltip}">
+                    <div id='quick-view-color-swatch' data-for-test='${previewCSS}' class='color-swatch'
+                        style='background: ${previewCSS}'>
+                    </div>
+                    <span style="${gradientMatch.match? "display: none;": ""}">
+                        <i class="fa fa-edit" style="color: ${previewCSS}; margin-top:5px;"></i>
+                        <span style="color: ${previewCSS}; margin-top:5px;">${Strings.EDIT}</span>
+                    </span>
+                </div>`);
                 preview.click(function () {
                     if(gradientMatch.match) {
                         return;
                     }
-                    editor.setCursorPos(startPos);
-                    CommandManager.execute(Commands.TOGGLE_QUICK_EDIT);
+                    let fullEditor = EditorManager.getCurrentFullEditor();
+                    if(fullEditor && fullEditor.document.file.fullPath !== editor.document.file.fullPath) {
+                        const foundResult = MainViewManager.findInAllWorkingSets(editor.document.file.fullPath);
+                        let paneToOpen;
+                        if(fullEditor.length) {
+                            paneToOpen = foundResult[0].pane;
+                        }
+                        FileViewController.openAndSelectDocument(editor.document.file.fullPath,
+                            FileViewController.WORKING_SET_VIEW, paneToOpen)
+                            .done(function () {
+                                fullEditor = EditorManager.getCurrentFullEditor();
+                                fullEditor.setCursorPos(startPos.line, startPos.ch, true);
+                                CommandManager.execute(Commands.TOGGLE_QUICK_EDIT);
+                            });
+                    } else {
+                        editor.setCursorPos(startPos.line, startPos.ch);
+                        CommandManager.execute(Commands.TOGGLE_QUICK_EDIT);
+                    }
                     Metrics.countEvent(Metrics.EVENT_TYPE.QUICK_VIEW, "color", "click");
                 });
 

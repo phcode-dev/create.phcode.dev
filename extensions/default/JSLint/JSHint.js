@@ -29,16 +29,18 @@
 define(function (require, exports, module) {
 
     // Load dependent modules
-    const _                = brackets.getModule("thirdparty/lodash"),
-        CodeInspection     = brackets.getModule("language/CodeInspection"),
+    const CodeInspection     = brackets.getModule("language/CodeInspection"),
         FileSystemError    = brackets.getModule("filesystem/FileSystemError"),
         AppInit            = brackets.getModule("utils/AppInit"),
         PreferencesManager = brackets.getModule("preferences/PreferencesManager"),
         DocumentManager    = brackets.getModule("document/DocumentManager"),
         Strings            = brackets.getModule("strings"),
+        StringUtils        = brackets.getModule("utils/StringUtils"),
         ProjectManager     = brackets.getModule("project/ProjectManager"),
         FileSystem         = brackets.getModule("filesystem/FileSystem"),
-        IndexingWorker     = brackets.getModule("worker/IndexingWorker");
+        IndexingWorker     = brackets.getModule("worker/IndexingWorker"),
+        Metrics            = brackets.getModule("utils/Metrics"),
+        ESLint       = require("./ESLint");
 
     if(Phoenix.isTestWindow) {
         IndexingWorker.on("JsHint_extension_Loaded", ()=>{
@@ -95,10 +97,12 @@ define(function (require, exports, module) {
 
             let options = projectSpecificOptions || DEFAULT_OPTIONS;
 
+            const startTime = Date.now();
             IndexingWorker.execPeer("jsHint", {
                 text,
                 options
             }).then(jsHintErrors =>{
+                Metrics.logPerformanceTime("JSHint", Date.now() - startTime);
                 if (!jsHintErrors.lintResult && jsHintErrors.errors.length) {
                     let errors = jsHintErrors.errors;
 
@@ -159,18 +163,23 @@ define(function (require, exports, module) {
         return new Promise((resolve, reject)=>{
             configFileName = configFileName || CONFIG_FILE_NAME;
             const configFilePath = path.join(dir, configFileName);
-            let displayPath = ProjectManager.makeProjectRelativeIfPossible(configFilePath);
-            displayPath = Phoenix.app.getDisplayPath(displayPath);
+            let displayPath = ProjectManager.getProjectRelativeOrDisplayPath(configFilePath);
             DocumentManager.getDocumentForPath(configFilePath).done(function (configDoc) {
+                if (!ProjectManager.isWithinProject(configFilePath)) {
+                    // this is a rare race condition where the user switches project between the get document call.
+                    // Eg. in integ tests.
+                    reject(`JSHint Project changed while scanning ${configFilePath}`);
+                    return;
+                }
                 let config;
                 const content = configDoc.getText();
                 try {
                     config = JSON.parse(removeComments(content));
                     console.log("JSHint: loaded config file for project " + configFilePath);
                 } catch (e) {
-                    console.log("JSHint: error parsing " + configFilePath);
+                    console.log("JSHint: error parsing " + configFilePath, content, e);
                     // just log and return as this is an expected failure for us while the user edits code
-                    reject("Error parsing JSHint config file:    " + displayPath);
+                    reject(StringUtils.format(Strings.JSHINT_CONFIG_JSON_ERROR, displayPath));
                     return;
                 }
                 // Load any base config defined by "extends".
@@ -188,11 +197,10 @@ define(function (require, exports, module) {
                         resolve(mergedConfig);
                     }).catch(()=>{
                         let extendDisplayPath = ProjectManager.makeProjectRelativeIfPossible(extendFile.fullPath);
-                        extendDisplayPath = Phoenix.app.getDisplayPath(extendDisplayPath);
-                        reject("Error parsing JSHint config file: " + extendDisplayPath);
+                        extendDisplayPath = ProjectManager.getProjectRelativeOrDisplayPath(extendDisplayPath);
+                        reject(StringUtils.format(Strings.JSHINT_CONFIG_JSON_ERROR, extendDisplayPath));
                     });
-                }
-                else {
+                } else {
                     resolve(config);
                 }
             }).fail((err)=>{
@@ -201,18 +209,32 @@ define(function (require, exports, module) {
                     return;
                 }
                 console.error("Error reading JSHint Config File", configFilePath, err);
-                reject("Error reading JSHint Config File", displayPath);
+                reject(StringUtils.format(Strings.JSHINT_CONFIG_ERROR, displayPath));
             });
         });
     }
 
     function _reloadOptions() {
         projectSpecificOptions = null;
-        _readConfig(ProjectManager.getProjectRoot().fullPath, CONFIG_FILE_NAME).then((config)=>{
+        jsHintConfigFileErrorMessage = null;
+        const scanningProjectPath = ProjectManager.getProjectRoot().fullPath;
+        _readConfig(scanningProjectPath, CONFIG_FILE_NAME).then((config)=>{
+            if(scanningProjectPath !== ProjectManager.getProjectRoot().fullPath){
+                // this is a rare race condition where the user switches project between the get document call.
+                // Eg. in integ tests. do nothing as another scan for the new project will be in progress.
+                return;
+            }
+            if(config) {
+                Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "jsHint", "config");
+            }
             projectSpecificOptions = config;
-            CodeInspection.requestRun(Strings.JSHINT_NAME);
             jsHintConfigFileErrorMessage = null;
+            CodeInspection.requestRun(Strings.JSHINT_NAME);
         }).catch((err)=>{
+            if(scanningProjectPath !== ProjectManager.getProjectRoot().fullPath){
+                return;
+            }
+            Metrics.countEvent(Metrics.EVENT_TYPE.LINT, "jsHintConfig", "error");
             jsHintConfigFileErrorMessage = err;
             CodeInspection.requestRun(Strings.JSHINT_NAME);
         });
@@ -222,31 +244,18 @@ define(function (require, exports, module) {
         return !!(jsHintConfigFileErrorMessage || projectSpecificOptions);
     }
 
-    function _isFileInArray(fileToCheck, fileArray){
-        if(!fileArray){
-            return false;
-        }
-        for(let file of fileArray){
-            if(file.fullPath === fileToCheck.fullPath){
-                return true;
-            }
-        }
-        return false;
-    }
-
-    function _projectFileChanged(_evt, entry, added, removed) {
-        let configFilePath = FileSystem.getFileForPath(ProjectManager.getProjectRoot().fullPath + CONFIG_FILE_NAME);
-        if(entry && entry.fullPath === configFilePath.fullPath
-            || _isFileInArray(configFilePath, added)){
+    function _projectFileChanged(_evt, changedPath, addedSet, removedSet) {
+        let configPath = path.join(ProjectManager.getProjectRoot().fullPath, CONFIG_FILE_NAME);
+        if(changedPath === configPath || addedSet.has(configPath)){
             _reloadOptions();
-        } else if(_isFileInArray(configFilePath, removed)){
+        } else if(removedSet.has(configPath)){
             projectSpecificOptions = null;
             jsHintConfigFileErrorMessage = null;
         }
     }
 
     AppInit.appReady(function () {
-        ProjectManager.on(ProjectManager.EVENT_PROJECT_FILE_CHANGED, _projectFileChanged);
+        ProjectManager.on(ProjectManager.EVENT_PROJECT_CHANGED_OR_RENAMED_PATH, _projectFileChanged);
         ProjectManager.on(ProjectManager.EVENT_PROJECT_OPEN, _reloadOptions);
         _reloadOptions();
     });
@@ -256,7 +265,10 @@ define(function (require, exports, module) {
         name: Strings.JSHINT_NAME,
         scanFileAsync: lintOneFile,
         canInspect: function (fullPath) {
-            return !prefs.get(PREFS_JSHINT_DISABLED) && fullPath && !fullPath.endsWith(".min.js");
+            return !prefs.get(PREFS_JSHINT_DISABLED) && fullPath && !fullPath.endsWith(".min.js")
+                && (isJSHintConfigActive() || !ESLint.isESLintActive());
+            // if there is no linter, then we use jsHint as the default linter as it works in browser and native apps.
+            // remove ESLint.isESLintActive() once we add typescript language service that supports browser.
         }
     });
 

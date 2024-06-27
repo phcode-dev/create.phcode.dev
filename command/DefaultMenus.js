@@ -122,11 +122,15 @@ define(function (require, exports, module) {
         menu.addMenuDivider();
         menu.addMenuItem(Commands.FILE_SAVE);
         menu.addMenuItem(Commands.FILE_SAVE_ALL);
+        if(Phoenix.isNativeApp){
+            menu.addMenuItem(Commands.FILE_SAVE_AS);
+            // save as is not yet supported in browser as in our vfs implements only open folder, so vfs needs to
+            // be changed. Also, we dont know how the ux for save as will be in virtual paths.
+        }
         menu.addMenuItem(Commands.FILE_DUPLICATE_FILE);
         menu.addMenuItem(Commands.FILE_DOWNLOAD_PROJECT, undefined, undefined, undefined, {
             hideWhenCommandDisabled: true
         });
-        // menu.addMenuItem(Commands.FILE_SAVE_AS); not yet available in phoenix
         // menu.addMenuItem(Commands.FILE_PROJECT_SETTINGS); not yet available in phoenix
         menu.addMenuDivider();
         menu.addMenuItem(Commands.FILE_EXTENSION_MANAGER);
@@ -246,9 +250,8 @@ define(function (require, exports, module) {
          * Help menu
          */
         menu = Menus.addMenu(Strings.HELP_MENU, Menus.AppMenuBar.HELP_MENU);
-        if (brackets.config.support_url) {
-            menu.addMenuItem(Commands.HELP_SUPPORT);
-        }
+        menu.addMenuItem(Commands.HELP_DOCS);
+        menu.addMenuItem(Commands.HELP_SUPPORT);
         if (brackets.config.suggest_feature_url) {
             menu.addMenuItem(Commands.HELP_SUGGEST);
         }
@@ -263,9 +266,8 @@ define(function (require, exports, module) {
             menu.addMenuDivider();
         }
 
-        if (brackets.config.twitter_url) {
-            menu.addMenuItem(Commands.HELP_TWITTER);
-        }
+        menu.addMenuItem(Commands.HELP_YOUTUBE);
+        menu.addMenuItem(Commands.HELP_TWITTER);
         if (brackets.config.homepage_url) {
             menu.addMenuItem(Commands.HELP_HOMEPAGE);
         }

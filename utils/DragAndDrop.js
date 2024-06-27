@@ -22,17 +22,24 @@
 define(function (require, exports, module) {
 
 
-    var Async           = require("utils/Async"),
+    const Async           = require("utils/Async"),
         CommandManager  = require("command/CommandManager"),
         Commands        = require("command/Commands"),
         Dialogs         = require("widgets/Dialogs"),
         DefaultDialogs  = require("widgets/DefaultDialogs"),
         MainViewManager = require("view/MainViewManager"),
         FileSystem      = require("filesystem/FileSystem"),
+        PreferencesManager  = require("preferences/PreferencesManager"),
         FileUtils       = require("file/FileUtils"),
         ProjectManager  = require("project/ProjectManager"),
         Strings         = require("strings"),
+        Metrics = require("utils/Metrics"),
         StringUtils     = require("utils/StringUtils");
+
+    const _PREF_DRAG_AND_DROP = "dragAndDrop"; // used in debug menu
+    PreferencesManager.definePreference(_PREF_DRAG_AND_DROP, "boolean",
+        Phoenix.isNativeApp && Phoenix.platform !== "linux", {description: Strings.DESCRIPTION_DRAG_AND_DROP_ENABLED}
+    );
 
     /**
      * Returns true if the drag and drop items contains valid drop objects.
@@ -111,8 +118,9 @@ define(function (require, exports, module) {
                         }
                     }
 
+                    Metrics.countEvent(Metrics.EVENT_TYPE.PLATFORM, "dragAndDrop", "fileOpen");
                     CommandManager.execute(Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN,
-                                           {fullPath: path, silent: true})
+                        {fullPath: path, silent: true})
                         .done(function () {
                             result.resolve();
                         })
@@ -122,6 +130,7 @@ define(function (require, exports, module) {
                         });
                 } else if (!err && item.isDirectory && paths.length === 1) {
                     // One folder was dropped, open it.
+                    Metrics.countEvent(Metrics.EVENT_TYPE.PLATFORM, "dragAndDrop", "projectOpen");
                     ProjectManager.openProject(path)
                         .done(function () {
                             result.resolve();
@@ -153,7 +162,7 @@ define(function (require, exports, module) {
                     message += "<ul class='dialog-list'>";
                     errorFiles.forEach(function (info) {
                         message += "<li><span class='dialog-filename'>" +
-                            StringUtils.breakableUrl(ProjectManager.makeProjectRelativeIfPossible(info.path)) +
+                            StringUtils.breakableUrl(ProjectManager.getProjectRelativeOrDisplayPath(info.path)) +
                             "</span> - " + errorToString(info.error) +
                             "</li>";
                     });
@@ -168,6 +177,107 @@ define(function (require, exports, module) {
             });
     }
 
+    async function _focusAndOpenDroppedFiles(droppedPaths) {
+        try{
+            const currentWindow = window.__TAURI__.window.getCurrent();
+            await currentWindow.setAlwaysOnTop(true);
+            await currentWindow.setAlwaysOnTop(false);
+        } catch (e) {
+            console.error("Error focusing window");
+        }
+        openDroppedFiles(droppedPaths);
+    }
+
+    if(Phoenix.isNativeApp){
+        window.__TAURI__.event.listen('file-drop-event-phoenix', ({payload})=> {
+            if(!payload || !payload.pathList || !payload.pathList.length || !payload.windowLabelOfListener
+                || payload.windowLabelOfListener !== window.__TAURI__.window.appWindow.label){
+                return;
+            }
+            Metrics.countEvent(Metrics.EVENT_TYPE.PLATFORM, "dragAndDrop", "any");
+            const droppedVirtualPaths = [];
+            for(const droppedPath of payload.pathList) {
+                try{
+                    droppedVirtualPaths.push(window.fs.getTauriVirtualPath(droppedPath));
+                } catch (e) {
+                    console.error("Error resolving dropped path: ", droppedPath);
+                }
+            }
+            _focusAndOpenDroppedFiles(droppedVirtualPaths);
+        });
+    }
+
+    async function _computeNewPositionAndSizeWebkit() {
+        const currentWindow = window.__TAURI__.window.getCurrent();
+        const newSize = await currentWindow.innerSize();
+        const newPosition = await currentWindow.innerPosition();
+        // in mac we somehow get the top left of the window including the title bar even though we are calling the
+        // tauri innerPosition api. We earlier adjusted for a generally constant title bar height of mac that is 28px.
+        // But then is nome macs due to display scaling, it was not 28px all the time.
+        // so, we just draw over the entire window in mac alone.
+        return {newSize, newPosition};
+    }
+
+    async function _computeNewPositionAndSizeWindows() {
+        // Note that the drop window may be on different screens if multi window setup. in windows os, there can be
+        // of different scale factors like 1x and 1.5x on another monitor. Additionally, we may apply our own zoom
+        // settings. So its is always better to just use the tauri provided positions. the tauri api returned values
+        // will position the window to the correct monitor as well.
+        const currentWindow = window.__TAURI__.window.getCurrent();
+        const newSize = await currentWindow.innerSize();
+        const newPosition = await currentWindow.innerPosition();
+        return {newSize, newPosition};
+    }
+
+    async function _computeNewPositionAndSize() {
+        if(Phoenix.platform === "win") {
+            return _computeNewPositionAndSizeWindows();
+        }
+        return _computeNewPositionAndSizeWebkit();
+    }
+
+    async function showAndResizeFileDropWindow(event) {
+        let $activeElement;
+        const fileDropWindow = window.__TAURI__.window.WebviewWindow.getByLabel('fileDrop');
+        if($("#editor-holder").has(event.target).length) {
+            $activeElement = $("#editor-holder");
+        } else if($("#sidebar").has(event.target).length) {
+            $activeElement = $("#sidebar");
+        } else {
+            await fileDropWindow.hide();
+        }
+        if(!$activeElement){
+            return;
+        }
+
+        const {newSize, newPosition} = await _computeNewPositionAndSize();
+        const currentSize = await fileDropWindow.innerSize();
+        const currentPosition = await fileDropWindow.innerPosition();
+        const isSameSize = currentSize.width === newSize.width && currentSize.height === newSize.height;
+        const isSamePosition = currentPosition.x === newPosition.x && currentPosition.y === newPosition.y;
+        window.__TAURI__.event.emit("drop-attach-on-window", {
+            projectName: window.path.basename(ProjectManager.getProjectRoot().fullPath),
+            dropMessage: Strings.DROP_TO_OPEN_FILES,
+            dropMessageOneFile: Strings.DROP_TO_OPEN_FILE,
+            dropProjectMessage: Strings.DROP_TO_OPEN_PROJECT,
+            windowLabelOfListener: window.__TAURI__.window.appWindow.label,
+            platform: Phoenix.platform
+        });
+        if (isSameSize && isSamePosition && (await fileDropWindow.isVisible())) {
+            return; // Do nothing if the window is already at the correct size and position and visible
+        }
+
+        // Resize the fileDrop window to match the current window
+        await fileDropWindow.setSize(newSize);
+        await fileDropWindow.setPosition(newPosition);
+
+        // Show the fileDrop window
+        await fileDropWindow.show();
+        await fileDropWindow.setAlwaysOnTop(true);
+        // the fileDropWindow window will always be on top as the window itslef has logic to dismiss itself if mouse
+        // exited it. Also, if we dont to that, in mac in some cases, the window will go to the background while
+        // dragging. So while this window is visible, this will alwyas be on top.
+    }
 
     /**
      * Attaches global drag & drop handlers to this window. This enables dropping files/folders to open them, and also
@@ -181,6 +291,12 @@ define(function (require, exports, module) {
             var files = event.dataTransfer.files;
 
             stopURIListPropagation(files, event);
+            if(PreferencesManager.get(_PREF_DRAG_AND_DROP) &&
+                event.dataTransfer.types && event.dataTransfer.types.includes("Files")){
+                // in linux, there is a bug in ubuntu 24 where dropping a file will cause a ghost icon which only
+                // goes away on reboot. So we dont support drop files in linux for now.
+                showAndResizeFileDropWindow(event);
+            }
 
             if (files && files.length) {
                 event.stopPropagation();
@@ -199,7 +315,8 @@ define(function (require, exports, module) {
         function handleDrop(event) {
             event = event.originalEvent || event;
 
-            var files = event.dataTransfer.files;
+            const files = event.dataTransfer.files;
+            Metrics.countEvent(Metrics.EVENT_TYPE.PLATFORM, "dragAndDrop", "any");
 
             stopURIListPropagation(files, event);
 
@@ -243,4 +360,7 @@ define(function (require, exports, module) {
     exports.attachHandlers      = attachHandlers;
     exports.isValidDrop         = isValidDrop;
     exports.openDroppedFiles    = openDroppedFiles;
+
+    // private exports
+    exports._PREF_DRAG_AND_DROP = _PREF_DRAG_AND_DROP;
 });
