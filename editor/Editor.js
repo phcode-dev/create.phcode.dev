@@ -78,12 +78,15 @@ define(function (require, exports, module) {
         EventDispatcher    = require("utils/EventDispatcher"),
         PerfUtils          = require("utils/PerfUtils"),
         PreferencesManager = require("preferences/PreferencesManager"),
+        StateManager       = require("preferences/StateManager"),
         TextRange          = require("document/TextRange").TextRange,
         TokenUtils         = require("utils/TokenUtils"),
         HTMLUtils          = require("language/HTMLUtils"),
         MainViewManager    = require("view/MainViewManager"),
         Metrics            = require("utils/Metrics"),
         _                  = require("thirdparty/lodash");
+
+    const tabSpacesStateManager = StateManager._createInternalStateManager(StateManager._INTERNAL_STATES.TAB_SPACES);
 
     /** Editor helpers */
 
@@ -118,6 +121,7 @@ define(function (require, exports, module) {
         SPACE_UNITS         = EditorPreferences.SPACE_UNITS,
         STYLE_ACTIVE_LINE   = EditorPreferences.STYLE_ACTIVE_LINE,
         TAB_SIZE            = EditorPreferences.TAB_SIZE,
+        AUTO_TAB_SPACES     = EditorPreferences.AUTO_TAB_SPACES,
         USE_TAB_CHAR        = EditorPreferences.USE_TAB_CHAR,
         WORD_WRAP           = EditorPreferences.WORD_WRAP,
         INDENT_LINE_COMMENT = EditorPreferences.INDENT_LINE_COMMENT,
@@ -127,7 +131,7 @@ define(function (require, exports, module) {
         LINE_NUMBER_GUTTER_PRIORITY     = EditorPreferences.LINE_NUMBER_GUTTER_PRIORITY,
         CODE_FOLDING_GUTTER_PRIORITY    = EditorPreferences.CODE_FOLDING_GUTTER_PRIORITY;
 
-    let editorOptions = Object.keys(cmOptions);
+    let editorOptions = [...Object.keys(cmOptions), AUTO_TAB_SPACES];
 
     /** Editor preferences */
 
@@ -941,6 +945,15 @@ define(function (require, exports, module) {
     };
 
     /**
+     * Check if the editor has multiple cursors or selections
+     * @returns {boolean}
+     */
+    Editor.prototype.hasMultipleCursors = function () {
+        const selections = this._codeMirror.listSelections();
+        return selections.length > 1;
+    };
+
+    /**
      * Takes the given selections, and expands each selection so it encompasses whole lines. Merges
      * adjacent line selections together. Keeps track of each original selection associated with a given
      * line selection (there might be multiple if individual selections were merged into a single line selection).
@@ -1054,6 +1067,40 @@ define(function (require, exports, module) {
         let token = TokenUtils.getTokenAt(cm, cursor, precise);
         token.line = cursor.line;
         return token;
+    };
+
+    /**
+     * Retrieves a single character from the specified position in the editor.
+     * x|y where `|` is the cursor, will return y
+     * @param {CodeMirror.Position} pos - The position from which to retrieve the character.
+     *                                    This should be an object with `line` and `ch` properties.
+     * @returns {string|null} The character at the given position if within bounds,
+     *                        otherwise `null` if the position is out of range.
+     */
+    Editor.prototype.getCharacterAtPosition = function (pos) {
+        const cm = this._codeMirror;
+        let lineText = cm.getLine(pos.line);
+        if (pos.ch >= lineText.length || pos.line >= cm.lineCount()) {
+            return null;
+        }
+
+        return cm.getRange(pos, {line: pos.line, ch: pos.ch + 1});
+    };
+
+    /**
+     * Retrieves a single character previous to the specified position in the editor in the same line if possible.
+     * x|y where `|` is the cursor, will return x
+     *
+     * @param {CodeMirror.Position} pos - The position from which to retrieve the character.
+     *                                    This should be an object with `line` and `ch` properties.
+     * @returns {string|null} The character previous to the given position if within bounds,
+     *                        otherwise `null` if the position is out of range.
+     */
+    Editor.prototype.getPrevCharacterAtPosition = function (pos) {
+        if(pos.ch === 0) {
+            return null;
+        }
+        return this.getCharacterAtPosition({line: pos.line, ch: pos.ch-1});
     };
 
     /**
@@ -1331,6 +1378,26 @@ define(function (require, exports, module) {
         return marks.filter(function (mark){
             return markType ? mark.markType === markType : true;
         });
+    };
+
+    /**
+     * Returns the first mark of a specific type found after the given position.
+     * @param {{line: number, ch: number}} position - The starting position to search from.
+     * @param {string} markType - The type of mark to look for.
+     * @returns {Array[TextMarker]} The array of text markers found, or an empty array if none are found.
+     */
+    Editor.prototype.getMarksAfter = function (position, markType) {
+        return this.findMarks(position, { line: this.lineCount(), ch: 0 }, markType) || [];
+    };
+
+    /**
+     * Returns the first mark of a specific type found before the given position.
+     * @param {{line: number, ch: number}} position - The ending position to search up to.
+     * @param {string} markType - The type of mark to look for.
+     * @returns {Array[TextMarker]} The array of text markers found, or an empty array if none are found.
+     */
+    Editor.prototype.getMarksBefore = function (position, markType) {
+        return this.findMarks({ line: 0, ch: 0 }, position, markType) || [];
     };
 
     /**
@@ -2212,6 +2279,13 @@ define(function (require, exports, module) {
         return PreferencesManager.get(prefName, PreferencesManager._buildContext(this.document.file.fullPath, this.document.getLanguage().getId()));
     };
 
+
+    const SPACING_OPTIONS = new Set([
+        AUTO_TAB_SPACES,
+        USE_TAB_CHAR,
+        SPACE_UNITS,
+        TAB_SIZE
+    ]);
     /**
      * @private
      *
@@ -2220,19 +2294,69 @@ define(function (require, exports, module) {
      * @param {string} prefName Name of the preference to visibly update
      */
     Editor.prototype._updateOption = function (prefName) {
-        var oldValue = this._currentOptions[prefName],
+        let oldValue = this._currentOptions[prefName],
             newValue = this._getOption(prefName);
+
+        const fullPath = this.document.file.fullPath;
+        if(SPACING_OPTIONS.has(prefName)){
+            const newUseAutoTabs = Editor.getAutoTabSpaces(fullPath);
+            if(newUseAutoTabs){
+                _computeTabSpaces(this);
+            }
+            const newUseTabCharCfg = Editor.getUseTabChar(fullPath);
+            const newSpaceUnits = Editor.getSpaceUnits(fullPath);
+            const newTabSize = Editor.getTabSize(fullPath);
+            const newTabUnits = Editor.getAutoTabUnits(fullPath);
+            if(this._currentOptions[AUTO_TAB_SPACES] === newUseAutoTabs &&
+                this._currentOptions[USE_TAB_CHAR] === newUseTabCharCfg &&
+                this._currentOptions[SPACE_UNITS] === newSpaceUnits &&
+                this._currentOptions[TAB_SIZE] === newTabSize) {
+                // no change
+                const currentIndentUnit = this._codeMirror.getOption("indentUnit");
+                let expectedIndentUnit;
+                if(newUseAutoTabs) {
+                    expectedIndentUnit = newUseTabCharCfg ?
+                        newTabUnits * this._currentOptions[TAB_SIZE] :
+                        this._currentOptions[SPACE_UNITS];
+                } else {
+                    expectedIndentUnit = newUseTabCharCfg ?
+                        this._currentOptions[TAB_SIZE]:
+                        this._currentOptions[SPACE_UNITS];
+                }
+                if(currentIndentUnit === expectedIndentUnit) {
+                    return;
+                }
+            }
+            this._currentOptions[AUTO_TAB_SPACES] = newUseAutoTabs;
+            this._currentOptions[USE_TAB_CHAR] = newUseTabCharCfg;
+            this._currentOptions[SPACE_UNITS] = newSpaceUnits;
+            this._currentOptions[TAB_SIZE] = newTabSize;
+            this._codeMirror.setOption(cmOptions[USE_TAB_CHAR], newUseTabCharCfg);
+            if(newUseAutoTabs) {
+                if(newUseTabCharCfg){
+                    this._codeMirror.setOption(cmOptions[TAB_SIZE], this._currentOptions[TAB_SIZE]);
+                    this._codeMirror.setOption("indentUnit", newTabUnits*this._currentOptions[TAB_SIZE]);
+                } else {
+                    this._codeMirror.setOption(cmOptions[TAB_SIZE], this._currentOptions[TAB_SIZE]);
+                    this._codeMirror.setOption("indentUnit", this._currentOptions[SPACE_UNITS]);
+                }
+            } else {
+                this._codeMirror.setOption("indentUnit", newUseTabCharCfg === true ?
+                    this._currentOptions[TAB_SIZE]:
+                    this._currentOptions[SPACE_UNITS]
+                );
+                this._codeMirror.setOption(cmOptions[TAB_SIZE], this._currentOptions[TAB_SIZE]);
+            }
+            this._codeMirror.setOption(cmOptions[USE_TAB_CHAR], newUseTabCharCfg);
+            this.trigger("optionChange", AUTO_TAB_SPACES, newUseAutoTabs);
+            this.trigger("optionChange", USE_TAB_CHAR, newUseTabCharCfg);
+            return;
+        }
 
         if (oldValue !== newValue) {
             this._currentOptions[prefName] = newValue;
 
-            if (prefName === USE_TAB_CHAR) {
-                this._codeMirror.setOption(cmOptions[prefName], newValue);
-                this._codeMirror.setOption("indentUnit", newValue === true ?
-                                           this._currentOptions[TAB_SIZE] :
-                                           this._currentOptions[SPACE_UNITS]
-                                          );
-            } else if (prefName === STYLE_ACTIVE_LINE) {
+            if (prefName === STYLE_ACTIVE_LINE) {
                 this._updateStyleActiveLine();
             } else if (prefName === SCROLL_PAST_END && this._visibleRange) {
                 // Do not apply this option to inline editors
@@ -2473,6 +2597,16 @@ define(function (require, exports, module) {
     };
 
     // Global settings that affect Editor instances that share the same preference locations
+    let computedTabSpaces = new Map();
+    function _getCachedSpaceCfg(key) {
+        // there are two storages for auto detected spaces for files. IF the user has explicitly set the spacing
+        // through the status bar, its stored permanently. else its computed on the fly
+        let cachedCfg = tabSpacesStateManager.get(key);
+        if(cachedCfg){
+            return cachedCfg;
+        }
+        return computedTabSpaces.get(key);
+    }
 
     /**
      * Sets whether to use tab characters (vs. spaces) when inserting new text.
@@ -2482,6 +2616,16 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setUseTabChar = function (value, fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
+            computedValues.useTabChar = value;
+            // persist explicitly user set values to storage
+            tabSpacesStateManager.set(fullPath, computedValues);
+            Editor.forEveryEditor(editor=>{
+                editor._updateOption(USE_TAB_CHAR);
+            }, fullPath);
+            return true;
+        }
         var options = fullPath && {context: fullPath};
         return PreferencesManager.set(USE_TAB_CHAR, value, options);
     };
@@ -2492,6 +2636,10 @@ define(function (require, exports, module) {
      * @return {boolean}
      */
     Editor.getUseTabChar = function (fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
+            return computedValues.useTabChar;
+        }
         return PreferencesManager.get(USE_TAB_CHAR, _buildPreferencesContext(fullPath));
     };
 
@@ -2503,6 +2651,18 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setTabSize = function (value, fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
+            if(EditorPreferences.isValidTabSize(value)){
+                computedValues.tabSize = value;
+                // persist explicitly user set values to storage
+                tabSpacesStateManager.set(fullPath, computedValues);
+                Editor.forEveryEditor(editor=>{
+                    editor._updateOption(TAB_SIZE);
+                }, fullPath);
+            }
+            return true;
+        }
         var options = fullPath && {context: fullPath};
         return PreferencesManager.set(TAB_SIZE, value, options);
     };
@@ -2513,7 +2673,83 @@ define(function (require, exports, module) {
      * @return {number}
      */
     Editor.getTabSize = function (fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.tabSize) {
+            return computedValues.tabSize;
+        }
         return PreferencesManager.get(TAB_SIZE, _buildPreferencesContext(fullPath));
+    };
+
+    /**
+     * Gets the number of tabs for the file. Will
+     * @param fullPath
+     * @returns {number|*}
+     */
+    Editor.getAutoTabUnits = function (fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.tabUnits) {
+            return computedValues.tabUnits;
+        }
+        return EditorPreferences.MIN_SPACE_UNITS;
+    };
+
+    const MAX_LINES_TO_SCAN_FOR_INDENT = 700; // this is high to account for any js docs/ file comments
+    function _computeTabSpaces(editor, scanFullFile, recompute) {
+        const fullPath = editor.document.file.fullPath;
+        if(_getCachedSpaceCfg(fullPath) && !recompute) {
+            return;
+        }
+        // we only scan the first 200 lines of text to determine the spaces.
+        const detectedVals = editor._detectIndent(scanFullFile? undefined : MAX_LINES_TO_SCAN_FOR_INDENT);
+        const useTabChar = (detectedVals.type === "tab");
+        let amount = detectedVals.amount;
+        if(!detectedVals.type || !amount){
+            // this happens if the util cant find out the tab/spacing config
+            amount = EditorPreferences.DEFAULT_SPACE_UNITS;
+        }
+        tabSpacesStateManager.set(fullPath, null); // we dont have a remove api, so just nulling for now
+        computedTabSpaces.set(fullPath, {
+            useTabChar,
+            tabSize: EditorPreferences.DEFAULT_TAB_SIZE,
+            spaceUnits: useTabChar ? 0 : Math.min(amount, EditorPreferences.MAX_SPACE_UNITS),
+            tabUnits: useTabChar ? Math.min(amount, EditorPreferences.MAX_AUTO_TAB_UNITS) : 0
+        });
+    }
+    Editor._autoDetectTabSpaces = function (editor, scanFullFile, recompute) {
+        if(!editor){
+            return;
+        }
+        const fullPath = editor.document.file.fullPath;
+        if(!Editor.getAutoTabSpaces(fullPath)){
+            return; // auto detect is disabled
+        }
+        if(_getCachedSpaceCfg(fullPath) && !recompute) {
+            editor._updateOption(AUTO_TAB_SPACES);
+            return;
+        }
+        _computeTabSpaces(editor, scanFullFile, recompute);
+        editor._updateOption(AUTO_TAB_SPACES);
+    };
+
+    /**
+     * When set, the tabs and spaces to be used will be auto detected from the current file or fall back to defaults.
+     * Affects any editors that share the same preference location.
+     * @param {boolean} value
+     * @param {string=} fullPath Path to file to get preference for
+     * @return {boolean} true if value was valid
+     */
+    Editor.setAutoTabSpaces = function (value, fullPath) {
+        const options = fullPath && {context: fullPath};
+        return PreferencesManager.set(AUTO_TAB_SPACES, value, options);
+    };
+
+    /**
+     * Get auto tabbing/spacing option
+     * @param {string=} fullPath Path to file to get preference for
+     * @return {number}
+     */
+    Editor.getAutoTabSpaces = function (fullPath) {
+        return PreferencesManager.get(AUTO_TAB_SPACES, _buildPreferencesContext(fullPath));
     };
 
     /**
@@ -2524,6 +2760,18 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setSpaceUnits = function (value, fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
+            if(EditorPreferences.isValidSpaceUnit(value)){
+                computedValues.spaceUnits = value;
+                // persist explicitly user set values to storage
+                tabSpacesStateManager.set(fullPath, computedValues);
+                Editor.forEveryEditor(editor=>{
+                    editor._updateOption(SPACE_UNITS);
+                }, fullPath);
+            }
+            return true;
+        }
         var options = fullPath && {context: fullPath};
         return PreferencesManager.set(SPACE_UNITS, value, options);
     };
@@ -2534,6 +2782,10 @@ define(function (require, exports, module) {
      * @return {number}
      */
     Editor.getSpaceUnits = function (fullPath) {
+        let computedValues = _getCachedSpaceCfg(fullPath);
+        if(Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.spaceUnits) {
+            return computedValues.spaceUnits;
+        }
         return PreferencesManager.get(SPACE_UNITS, _buildPreferencesContext(fullPath));
     };
 
@@ -2642,11 +2894,19 @@ define(function (require, exports, module) {
     };
 
     /**
-     * Runs callback for every Editor instance that currently exists
+     * Runs callback for every Editor instance that currently exists or only the editors matching the given fullPath.
      * @param {!function(!Editor)} callback
+     * @param {string} [fullPath] an optional second argument, if given will only callback for all editors
+     *  that is editing the file for the given fullPath
      */
-    Editor.forEveryEditor = function (callback) {
-        _instances.forEach(callback);
+    Editor.forEveryEditor = function (callback, fullPath) {
+        _instances.forEach(function (editor) {
+            if(!fullPath) {
+                callback(editor);
+            } else if(editor.document.file.fullPath === fullPath) {
+                callback(editor);
+            }
+        });
     };
 
     /**

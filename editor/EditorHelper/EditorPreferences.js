@@ -43,6 +43,7 @@ define(function (require, exports, module) {
         SPACE_UNITS         = "spaceUnits",
         STYLE_ACTIVE_LINE   = "styleActiveLine",
         TAB_SIZE            = "tabSize",
+        AUTO_TAB_SPACES     = "autoTabSpaces",
         UPPERCASE_COLORS    = "uppercaseColors",
         USE_TAB_CHAR        = "useTabChar",
         WORD_WRAP           = "wordWrap",
@@ -58,8 +59,10 @@ define(function (require, exports, module) {
         MIN_TAB_SIZE            =  1,
         DEFAULT_SPACE_UNITS     =  4,
         DEFAULT_TAB_SIZE        =  4,
+        AUTO_TAB_SIZE           =  4,
         MAX_SPACE_UNITS         = 10,
-        MAX_TAB_SIZE            = 10;
+        MAX_TAB_SIZE            = 10,
+        MAX_AUTO_TAB_UNITS      = 4;
 
     const LINE_NUMBER_GUTTER = "CodeMirror-linenumbers",
         LINE_NUMBER_GUTTER_PRIORITY     = 100,
@@ -141,6 +144,9 @@ define(function (require, exports, module) {
         validator: _.partialRight(ValidationUtils.isIntegerInRange, MIN_TAB_SIZE, MAX_TAB_SIZE),
         description: Strings.DESCRIPTION_TAB_SIZE
     });
+    PreferencesManager.definePreference(AUTO_TAB_SPACES,    "boolean", true, {
+        description: Strings.DESCRIPTION_AUTO_TAB_SPACE
+    });
     PreferencesManager.definePreference(UPPERCASE_COLORS,   "boolean", false, {
         description: Strings.DESCRIPTION_UPPERCASE_COLORS
     });
@@ -161,6 +167,14 @@ define(function (require, exports, module) {
     PreferencesManager.definePreference(INPUT_STYLE,  "string", "textarea", {
         description: Strings.DESCRIPTION_INPUT_STYLE
     });
+
+    function isValidTabSize (size) {
+        return ValidationUtils.isIntegerInRange(size, MIN_TAB_SIZE, MAX_TAB_SIZE);
+    }
+
+    function isValidSpaceUnit (size) {
+        return ValidationUtils.isIntegerInRange(size, MIN_SPACE_UNITS, MAX_SPACE_UNITS);
+    }
 
     function init(cmOptions) {
         // Mappings from Brackets preferences to CodeMirror options
@@ -194,6 +208,7 @@ define(function (require, exports, module) {
     exports.SPACE_UNITS         = SPACE_UNITS;
     exports.STYLE_ACTIVE_LINE   = STYLE_ACTIVE_LINE;
     exports.TAB_SIZE            = TAB_SIZE;
+    exports.AUTO_TAB_SPACES     = AUTO_TAB_SPACES;
     exports.UPPERCASE_COLORS    = UPPERCASE_COLORS;
     exports.USE_TAB_CHAR        = USE_TAB_CHAR;
     exports.WORD_WRAP           = WORD_WRAP;
@@ -207,10 +222,14 @@ define(function (require, exports, module) {
     exports.DEFAULT_TAB_SIZE        =  DEFAULT_TAB_SIZE;
     exports.MAX_SPACE_UNITS         = MAX_SPACE_UNITS;
     exports.MAX_TAB_SIZE            = MAX_TAB_SIZE;
+    exports.AUTO_TAB_SIZE           = AUTO_TAB_SIZE;
+    exports.MAX_AUTO_TAB_UNITS      = MAX_AUTO_TAB_UNITS;
 
     exports.LINE_NUMBER_GUTTER = LINE_NUMBER_GUTTER;
     exports.LINE_NUMBER_GUTTER_PRIORITY     = LINE_NUMBER_GUTTER_PRIORITY;
     exports.CODE_FOLDING_GUTTER_PRIORITY    = CODE_FOLDING_GUTTER_PRIORITY;
 
     exports.init =init;
+    exports.isValidTabSize = isValidTabSize;
+    exports.isValidSpaceUnit = isValidSpaceUnit;
 });

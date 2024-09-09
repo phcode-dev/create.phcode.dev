@@ -163,8 +163,7 @@ define(function (require, exports, module) {
             activeEditor && activeEditor.focus(); // restore focus from live preview
             return;
         }
-        const openFullEditors = MainViewManager.findInOpenPane(liveDocPath);
-        const openLiveDocEditor = openFullEditors.length ? openFullEditors[0].editor : null;
+        const allOpenFileCount = MainViewManager.getWorkingSetSize(MainViewManager.ALL_PANES);
         function selectInHTMLEditor(fullHtmlEditor) {
             const position = HTMLInstrumentation.getPositionFromTagId(fullHtmlEditor, parseInt(tagId, 10));
             if(position && fullHtmlEditor) {
@@ -180,22 +179,13 @@ define(function (require, exports, module) {
             // the active editor takes the priority in the workflow. If a css related file is active,
             // then we dont need to open the html live doc. For less files, we dont check if its related as
             // its not directly linked usually and needs a compile step. so we just do a fuzzy search.
-            activeEditor.focus();
+            _focusEditorIfNeeded(activeEditor, nodeName, contentEditable);
             _searchAndCursorIfCSS(activeEditor, allSelectors, nodeName);
             // in this case, see if we need to do any css reverse highlight magic here
-        } else if(openLiveDocEditor) {
-            // If we are on multi pane mode, the html doc was open in an inactive unfocused editor.
-            selectInHTMLEditor(openLiveDocEditor);
-        } else {
-            // no open editor for the live doc in panes, check if there is one in the working set.
-            const foundInWorkingSetPane = MainViewManager.findInAllWorkingSets(liveDocPath);
-            const paneToUse = foundInWorkingSetPane.length ?
-                foundInWorkingSetPane[0].paneId:
-                MainViewManager.ACTIVE_PANE; // if pane id is active pane, then the file is not open in working set
-            const viewToUse = (paneToUse === MainViewManager.ACTIVE_PANE) ?
-                FileViewController.PROJECT_MANAGER:
-                FileViewController.WORKING_SET_VIEW;
-            FileViewController.openAndSelectDocument(liveDocPath, viewToUse, paneToUse)
+        } else if(!allOpenFileCount){
+            // no open editor in any panes, then open the html file directly.
+            FileViewController.openAndSelectDocument(liveDocPath,
+                FileViewController.WORKING_SET_VIEW, MainViewManager.ACTIVE_PANE)
                 .done(()=>{
                     selectInHTMLEditor(EditorManager.getActiveEditor());
                 });

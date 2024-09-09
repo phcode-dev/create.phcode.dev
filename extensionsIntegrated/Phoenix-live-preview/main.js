@@ -129,7 +129,8 @@ define(function (require, exports, module) {
             const iframeDom = $iframe[0];
             iframeDom.contentWindow.postMessage({
                 type: "WHO_AM_I_RESPONSE",
-                isTauri: Phoenix.isNativeApp
+                isTauri: Phoenix.isNativeApp,
+                platform: Phoenix.platform
             }, "*"); // this is not sensitive info, and is only dispatched if requested by the iframe
         }
     });
@@ -676,15 +677,27 @@ define(function (require, exports, module) {
         }
         const fullPath = changedFile.fullPath;
         if(changedFile && _shouldShowCustomServerBar(fullPath)){
-            _showCustomServerBar();
+            _showCustomServerBar(fullPath);
         }
         const shouldUseInbuiltPreview = utils.isMarkdownFile(fullPath) || utils.isSVG(fullPath);
-        if(urlPinned || (LivePreviewSettings.isUsingCustomServer() &&
-            !LivePreviewSettings.getCustomServerConfig(fullPath) && !shouldUseInbuiltPreview)){
+        const customServeURL = LivePreviewSettings.isUsingCustomServer() &&
+            LivePreviewSettings.getCustomServerConfig(fullPath);
+        if(urlPinned || (LivePreviewSettings.isUsingCustomServer() && !customServeURL && !shouldUseInbuiltPreview)){
             return;
         }
+        // If we are using a custom server URL, we need to handle the live preview carefully:
+        // - If the user has not clicked on a previewable file from the custom server URL,
+        //   we should always show the base server URL. This is because some projects, like React,
+        //   do not have an HTML file and only contain JSX/render files. In these cases, we should show the live preview
+        // - However, if the user is already previewing a file from the custom server (e.g., customBaseURL/some.html),
+        //   we should not switch back to the base URL when they click on another file (e.g., a JS file).
+        //   This is because the user might be editing a related file of the custom-served page.
+        // - Therefore, we only switch to the base URL if the current preview has nothing to do with the custom server
+        //   URL for a better user experience.
+        const shouldSwitchCustomServer = customServeURL && currentLivePreviewURL !== customServeURL &&
+            (!currentLivePreviewURL || !currentLivePreviewURL.startsWith(customServeURL));
         if(changedFile && (utils.isPreviewableFile(fullPath) ||
-            utils.isServerRenderedFile(fullPath))){
+            utils.isServerRenderedFile(fullPath) || shouldSwitchCustomServer)){
             _loadPreview();
             if(!panelShownAtStartup && ProjectManager.isStartupFilesLoaded()){
                 let previewDetails = await StaticServer.getPreviewDetails();
@@ -722,7 +735,7 @@ define(function (require, exports, module) {
         if(!editor || !_shouldShowCustomServerBar(editor.document.file.fullPath)){
             return;
         }
-        _showCustomServerBar();
+        _showCustomServerBar(editor.document.file.fullPath);
     }
 
     function _shouldShowCustomServerBar(fullPath) {
@@ -734,14 +747,17 @@ define(function (require, exports, module) {
         return utils.isServerRenderedFile(fullPath);
     }
 
-    function _showCustomServerBar() {
+    function _showCustomServerBar(fullFilePath) {
         if(customServerModalBar){
+            $(".custom-banner-setup-server-text-message").html(
+                StringUtils.format(Strings.LIVE_DEV_SETTINGS_BANNER, path.extname(fullFilePath))
+            );
             return;
         }
         // Show the search bar
         const searchBarHTML =`<div style="display: flex;justify-content: end;align-items: baseline;">
-            <div style="margin-right: 5px;">
-                ${Strings.LIVE_DEV_SETTINGS_BANNER}
+            <div style="margin-right: 5px;" class="custom-banner-setup-server-text-message">
+                ${StringUtils.format(Strings.LIVE_DEV_SETTINGS_BANNER, path.extname(fullFilePath))}
             </div>
             <button class="btn btn-mini live-preview-settings" style="margin-right: 5px;">
                 ${Strings.LIVE_DEV_SETTINGS}
