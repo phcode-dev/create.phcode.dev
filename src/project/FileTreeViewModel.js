@@ -19,6 +19,9 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
+
 /*unittests: FileTreeViewModel*/
 
 /**
@@ -36,7 +39,10 @@ define(function (require, exports, module) {
         EventDispatcher     = require("utils/EventDispatcher"),
         FileUtils           = require("file/FileUtils");
 
-    // Constants
+    /**
+     * @const
+     * @type {string}
+     */
     var EVENT_CHANGE = "change";
 
     /**
@@ -574,7 +580,7 @@ define(function (require, exports, module) {
 
     /**
      * Returns the object at the given file path.
-     *
+     * @private
      * @param {string} path Path to the object
      * @return {Immutable.Map=} directory or file object from the tree. Null if it's not found.
      */
@@ -588,7 +594,7 @@ define(function (require, exports, module) {
 
     /**
      * Closes a subtree path, given by an object path.
-     *
+     * @private
      * @param {Immutable.Map} directory Current directory
      * @return {Immutable.Map} new directory
      */

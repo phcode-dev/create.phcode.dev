@@ -31,6 +31,7 @@
  * ### Simple example
  * For Eg. Let's say we have to create a popup notification over the HTML element with ID `showInfileTree`.
  * We can do this with the following
+ * @example
  * ```js
  * const NotificationUI = brackets.getModule("widgets/NotificationUI");
  * // or use window.NotificationUI global object has the same effect.
@@ -41,11 +42,12 @@
  * ```
  * ### Advanced example
  * Another advanced example where you can specify html and interactive components in the notification
+ * @example
  * ```js
  * // note that you can even provide an HTML Element node with
  * // custom event handlers directly here instead of HTML text.
  * let notification1 = NotificationUI.createFromTemplate(
- *   "<div>Click me to </br>locate the file in file tree</div>", "showInfileTree",{
+ *   "<div>Click me to locate the file in file tree</div>", "showInfileTree",{
  *       allowedPlacements: ['top', 'bottom'],
  *       dismissOnClick: false,
  *       autoCloseTimeS: 300 // auto close the popup after 5 minutes
@@ -55,7 +57,7 @@
  *     console.log("notification is closed in ui reason:", closeReason);
  * })
  * ```
- * The [createFromTemplate]() API can be configured with numerous options. See API options below.
+ * The `createFromTemplate` API can be configured with numerous options. See API options below.
  * @module widgets/NotificationUI
  */
 
@@ -71,6 +73,11 @@ define(function (require, exports, module) {
     const NOTIFICATION_TYPE_ARROW = "arrow",
         NOTIFICATION_TYPE_TOAST = "toast";
 
+    /**
+     * CSS class names for notification styles.
+     * @enum {string}
+     * @const
+     */
     const NOTIFICATION_STYLES_CSS_CLASS = {
         INFO: "style-info",
         WARNING: "style-warning",
@@ -79,6 +86,11 @@ define(function (require, exports, module) {
         DANGER: "style-danger"
     };
 
+    /**
+     * Closing notification reason.
+     * @enum {string}
+     * @const
+     */
     const CLOSE_REASON ={
         TIMEOUT: 'closeTimeout',
         CLICK_DISMISS: 'clickDismiss',
@@ -94,7 +106,6 @@ define(function (require, exports, module) {
      * This is an instance of the notification returned by the `createFromTemplate` call. The object can be used to
      * control the created notification. See Notification docs below.
      * @type {Object}
-     * @name Notification
      */
 
     /**
@@ -160,7 +171,7 @@ define(function (require, exports, module) {
     /**
      * Adds a done callback to the Notification promise. The promise will be resolved
      * when the Notification is dismissed. Never rejected.
-     * @example <caption>Print the close reason on console when the notification closes</caption>
+     * Print the close reason on console when the notification closes
      * notificationInstance.done((closeReason)=>{
      *     console.log(closeReason)
      * })
@@ -175,15 +186,17 @@ define(function (require, exports, module) {
      * Creates a new notification popup from given template.
      * The template can either be a string or a jQuery object representing a DOM node that is *not* in the current DOM.
      *
-     * @example <caption>Creating a notification popup</caption>
+     * Creating a notification popup
      * // note that you can even provide an HTML Element node with
      * // custom event handlers directly here instead of HTML text.
      * let notification1 = NotificationUI.createFromTemplate(
-     *   "<div>Click me to </br>locate the file in file tree</div>", "showInfileTree",{
+     * ```js
+     *   "<div>Click me to locate the file in file tree</div>", "showInfileTree",{
      *       allowedPlacements: ['top', 'bottom'],
      *       dismissOnClick: false,
      *       autoCloseTimeS: 300 // auto close the popup after 5 minutes
      *   });
+     * ```
      *
      * @param {string|Element} template A string template or HTML Element to use as the dialog HTML.
      * @param {String} [elementID] optional id string if provided will show the notification pointing to the element.
@@ -302,15 +315,16 @@ define(function (require, exports, module) {
      * Creates a new toast notification popup from given title and html message.
      * The message can either be a string or a jQuery object representing a DOM node that is *not* in the current DOM.
      *
-     * @example <caption>Creating a toast notification popup</caption>
+     * Creating a toast notification popup
      * // note that you can even provide an HTML Element node with
      * // custom event handlers directly here instead of HTML text.
      * let notification1 = NotificationUI.createToastFromTemplate( "Title here",
-     *   "<div>Click me to </br>locate the file in file tree</div>", {
+     * ```js
+     *   "<div>Click me to locate the file in file tree</div>", {
      *       dismissOnClick: false,
      *       autoCloseTimeS: 300 // auto close the popup after 5 minutes
      *   });
-     *
+     * ```
      * @param {string} title The title for the notification.
      * @param {string|Element} template A string template or HTML Element to use as the dialog HTML.
      * @param {{dismissOnClick, autoCloseTimeS, toastStyle}} [options] optional, supported

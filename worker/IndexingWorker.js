@@ -18,25 +18,16 @@
  *
  */
 
-/*global Phoenix*/
 // @INCLUDE_IN_API_DOCS
 /**
  * Phoenix houses a file indexing worker which caches all cacheable files of a project in memory.
  * This module can be used to communicate with the Index and extend it by attaching new js worker scripts to the
  * indexing worker as discussed below. Any extension that works on a large number of files should use the indexing
- * worker cache to free up the main thread of heavy file access. This is similar to
- * [worker/ExtensionsWorker](ExtensionsWorker-API) but with a full file index.
+ * worker cache to free up the main thread of heavy file access.
  *
- * * Extensions are advised to use [worker/ExtensionsWorker](ExtensionsWorker-API) if they do not use the file index and
- *   just want to offload minor tasks.
  * * Extensions performing large compute tasks should create their own worker and may use easy util methods in
- *   [worker/WorkerComm](WorkerComm-API) to communicate with the web worker.
+ *   [worker/WorkerComm](./WorkerComm) to communicate with the web worker.
  *
- * ## Import
- * ```js
- * // usage within extensions:
- * const IndexingWorker = brackets.getModule("worker/IndexingWorker");
- * ```
  * ## Extending the indexing worker
  * You can add your own custom scripts to the indexing worker by following the below example. Suppose you have an
  * extension folder with the following structure:
@@ -46,6 +37,7 @@
  * │  main.js
  * ```
  * In `main.js` extension module, we can import `my_worker.js` script into `IndexingWorker` by:
+ * @example
  * ```js
  * let ExtensionUtils = brackets.getModule("utils/ExtensionUtils");
  * let workerPath = ExtensionUtils.getModulePath(module, "my_worker.js")
@@ -55,7 +47,7 @@
  * Once the worker script is loaded with the above step:
  * * Phoenix can communicate with worker using the `IndexingWorker` reference in Phoenix.
  * * Worker can communicate with Phoenix with the global `WorkerComm` reference within the Indexing worker.
- * All utility methods in module [worker/WorkerComm](WorkerComm-API) can be used for worker communication.
+ * All utility methods in module [worker/WorkerComm](./WorkerComm) can be used for worker communication.
  *
  * A global constant `Phoenix.baseURL` is available in the worker context to get the base url from which phoenix was
  * launched.
@@ -89,19 +81,24 @@ define(function (require, exports, module) {
      * The above methods can be used with either `IndexingWorker` reference within Phoenix
      * or the global `WorkerComm` reference within the Indexing worker. (See example below.)
      *
-     * See [worker/WorkerComm](WorkerComm-API) for detailed API docs.
+     * See [worker/WorkerComm](./WorkerComm) for detailed API docs.
      *
-     * @example <caption>To Execute a named function `extensionName.sayHello` in the worker from phoenix</caption>
+     * ```js
+     * // To Execute a named function `extensionName.sayHello` in the worker from phoenix
+     *
      * // in my_worker.js. It is a good practice to prefix your `[extensionName]`
      * // to exec handler to prevent name collisions with other extensions.
+     *
      * WorkerComm.setExecHandler("extensionName.sayHello", (arg)=>{
      *     console.log("hello from worker ", arg); // prints "hello from worker phoenix"
      *     return "Hello Phoenix";
-     *   });
+     * });
+     *
      * // In Phoenix/extension
      * let workerMessage = await IndexingWorker.execPeer("extensionName.sayHello", "phoenix");
      * console.log(workerMessage); // prints "Hello Phoenix"
-     * @name WorkerComm-APIS
+     * ```
+     * @name WorkerComm
      */
 
     /**

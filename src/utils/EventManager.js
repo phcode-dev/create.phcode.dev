@@ -33,6 +33,7 @@
  * ## Usage
  * For Eg. Let's say we have an extension `drawImage` installed that wants to expose custom functionality to phoenix.
  * The Extension will first register named EventHandler like this:
+ * @example
  * ```js
  * // in drawImage/someExtensionModule.js module within the extension, do the following:
  * const EventDispatcher = brackets.getModule("utils/EventDispatcher"),
@@ -44,6 +45,7 @@
  * Once the event handler is registered, we can trigger events on the named handler anywhere in phoenix
  * (inside or outside the extension) by using:
  *
+ * @example
  * ```js
  * EventManager.triggerEvent("drawImage-Handler", "someEventName", "param1", "param2", ...);
  * ```
@@ -56,16 +58,16 @@ define(function (require, exports, module) {
      * Registers a named EventHandler. Event handlers are created using the call:
      * `EventDispatcher.makeEventDispatcher(Command.prototype);`
      *
-     * @example <caption>To register a close dialogue event handler in an extension:</caption>
+     * To register a close dialogue event handler in an extension:
      * // in close-dialogue.js module winthin the extension, do the following:
      * const EventDispatcher = brackets.getModule("utils/EventDispatcher"),
      * EventDispatcher.makeEventDispatcher(exports);
      * const EventManager = brackets.getModule("utils/EventManager");
      *
-     * // Note: for event handler names, please change the <extensionName> to your extension name
+     * // Note: for event handler names, please change the `extensionName` to your extension name
      * // to prevent collisions. EventHandlers starting with `ph-` and `br-` are reserved as system handlers
      * // and not available for use in extensions.
-     * EventManager.registerEventHandler("<extensionName>-closeDialogueHandler", exports);
+     * EventManager.registerEventHandler("`extensionName`-closeDialogueHandler", exports);
      * // Once the event handler is registered, see triggerEvent API on how to raise events
      *
      * @param {string} handlerName a unique name of the handler.
@@ -82,6 +84,7 @@ define(function (require, exports, module) {
 
     /**
      * Returns true is an EventHandler of the given name exists.
+     *
      * @param {string} handlerName
      * @return {boolean}
      * @type {function}
@@ -93,7 +96,7 @@ define(function (require, exports, module) {
     /**
      * Triggers an event on the named event handler.
      *
-     * @example <caption>To trigger an event to the `closeDialogue` event handler registered above</caption>
+     * To trigger an event to the `closeDialogue` event handler registered above
      * // anywhere in code, do the following:
      * const EventManager = brackets.getModule("utils/EventManager");
      * EventManager.triggerEvent("closeDialogueHandler", "someEvent", "param1", "param2", ...);
@@ -121,9 +124,10 @@ define(function (require, exports, module) {
      * listen to these events should register their named eventHandler with `EventManager`.
      *
      * By default, only origins part of `window.Phoenix.TRUSTED_ORIGINS` are whitelisted. If your extension is
-     * bringing in a cross-origin ifrmame say `http://mydomain.com`, you should add it to the whitelist by setting
-     * `window.Phoenix.TRUSTED_ORIGINS["http://mydomain.com"]=true;`
+     * bringing in a cross-origin ifrmame say [`http://mydomain.com`], you should add it to the whitelist by setting
+     * `window.Phoenix.TRUSTED_ORIGINS ["http://mydomain.com"] = true;`
      *
+     * @private
      * @function
      * @global
      * @listens window#message
@@ -131,28 +135,31 @@ define(function (require, exports, module) {
      * @param {MessageEvent} event - The 'message' event targeted at the window object. The event's
      *   'data' property should have a 'handlerName' and `eventName` property that will be triggered in phcode.
      *
-     * @example
      * // We will try to communicate within an embedded iframe and an extension
      *
      * // In your extension in phoenix, register a handlerName to process a new kind of event.
      * const EventDispatcher = brackets.getModule("utils/EventDispatcher"),
      * EventDispatcher.makeEventDispatcher(exports);
      * const EventManager = brackets.getModule("utils/EventManager");
-     * // Note: for event handler names, please change the <extensionName> to your extension name
+     * // Note: for event handler names, please change the `extensionName` to your extension name
      * // to prevent collisions. EventHandlers starting with `ph-` and `br-` are reserved as system handlers
      * // and not available for use in extensions.
-     * window.Phoenix.TRUSTED_ORIGINS["http://mydomain.com"]=true;
-     * EventManager.registerEventHandler("<extensionName>-iframeMessageHandler", exports);
+     * window.Phoenix.TRUSTED_ORIGINS ["http://mydomain.com"] = true;
+     * ```js
+     * EventManager.registerEventHandler("`extensionName`-iframeMessageHandler", exports);
      * exports.on("iframeHelloEvent", function(_ev, event){
      *    console.log(event.data.message);
      * });
+     * ```
      *
      * // Now from your iframe, send a message to the above event handler using:
+     * ```js
      * window.parent.postMessage({
-     *     handlerName: "<extensionName>-iframeMessageHandler",
+     *     handlerName: "`extensionName`-iframeMessageHandler",
      *     eventName: "iframeHelloEvent",
      *     message: "hello world"
      * }, '*');
+     * ```
      * // `you should replace * with the trusted domains list in production for security.` See how this can be
      * // done securely with this example: https://github.com/phcode-dev/phcode.live/blob/6d64386fbb9d671cdb64622bc48ffe5f71959bff/docs/virtual-server-loader.js#L43
      * // Abstract is that, pass in the parentOrigin as a query string parameter in iframe, and validate it against
@@ -172,6 +179,12 @@ define(function (require, exports, module) {
         triggerEvent(handlerName, eventName, event);
     };
 
+    /**
+     * add or remove a domain, in the list of trusted origin
+     *
+     * @param {string} origin - the origin to be added or removed
+     * @param {boolean} isTrusted - if `true` adds the origin to the list, else removes it.
+     */
     function setTrustedOrigin(origin, isTrusted) {
         if(!isTrusted){
             delete eventTrustedOrigins[origin];

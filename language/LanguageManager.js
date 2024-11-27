@@ -19,6 +19,10 @@
  *
  */
 
+
+// @INCLUDE_IN_API_DOCS
+
+
 /*unittests: LanguageManager*/
 
 /**
@@ -179,6 +183,7 @@ define(function (require, exports, module) {
      * Checks whether value is a non-empty string. Reports an error otherwise.
      * If no deferred is passed, console.error is called.
      * Otherwise the deferred is rejected with the error message.
+     * @private
      * @param {*}                value         The value to validate
      * @param {!string}          description   A helpful identifier for value
      * @param {?jQuery.Deferred} deferred      A deferred to reject with the error message in case of an error
@@ -202,6 +207,7 @@ define(function (require, exports, module) {
     /**
      * Monkey-patch CodeMirror to prevent modes from being overwritten by extensions.
      * We may rely on the tokens provided by some of these modes.
+     * @private
      */
     function _patchCodeMirror() {
         var _original_CodeMirror_defineMode = CodeMirror.defineMode;
@@ -217,6 +223,7 @@ define(function (require, exports, module) {
 
     /**
      * Adds a global mode-to-language association.
+     * @private
      * @param {!string} mode The mode to associate the language with
      * @param {!Language} language The language to associate with the mode
      */
@@ -332,6 +339,7 @@ define(function (require, exports, module) {
 
     /**
      * Resolves a CodeMirror mode to a Language object.
+     * @private
      * @param {!string} mode CodeMirror mode
      * @return {Language} The language for the provided mode or the fallback language
      */
@@ -390,6 +398,7 @@ define(function (require, exports, module) {
 
     /**
      * Resets all the language overrides for file paths. Used by unit tests only.
+     * @private
      */
     function _resetPathLanguageOverrides() {
         _filePathToLanguageMap = {};
@@ -445,54 +454,63 @@ define(function (require, exports, module) {
 
     /**
      * Identifier for this language
+     * @private
      * @type {string}
      */
     Language.prototype._id = null;
 
     /**
      * Human-readable name of this language
+     * @private
      * @type {string}
      */
     Language.prototype._name = null;
 
     /**
      * CodeMirror mode for this language
+     * @private
      * @type {string}
      */
     Language.prototype._mode = null;
 
     /**
      * File extensions that use this language
+     * @private
      * @type {Array.<string>}
      */
     Language.prototype._fileExtensions = null;
 
     /**
      * File names for extensionless files that use this language
+     * @private
      * @type {Array.<string>}
      */
     Language.prototype._fileNames = null;
 
     /**
      * Line comment syntax
+     * @private
      * @type {Array.<string>}
      */
     Language.prototype._lineCommentSyntax = null;
 
     /**
      * Which language to use for what CodeMirror mode
+     * @private
      * @type {Object.<string,Language>}
      */
     Language.prototype._modeToLanguageMap = null;
 
     /**
      * Block comment syntax
+     * @private
      * @type {{ prefix: string, suffix: string }}
      */
     Language.prototype._blockCommentSyntax = null;
 
     /**
      * Whether or not the language is binary
+     * @private
      * @type {boolean}
      */
     Language.prototype._isBinary = false;
@@ -507,6 +525,7 @@ define(function (require, exports, module) {
 
     /**
      * Sets the identifier for this language or prints an error to the console.
+     * @private
      * @param {!string} id Identifier for this language: lowercase letters, digits, and _ separators (e.g. "cpp", "foo_bar", "c99")
      * @return {boolean} Whether the ID was valid and set or not
      */
@@ -535,6 +554,7 @@ define(function (require, exports, module) {
 
     /**
      * Sets the human-readable name of this language or prints an error to the console.
+     * @private
      * @param {!string} name Human-readable name of the language, as it's commonly referred to (e.g. "C++")
      * @return {boolean} Whether the name was valid and set or not
      */
@@ -557,9 +577,9 @@ define(function (require, exports, module) {
 
     /**
      * Loads a mode and sets it for this language.
-     *
+     * @private
      * @param {(string|Array.<string>)} mode  CodeMirror mode (e.g. "htmlmixed"), optionally paired with a MIME mode defined by
-     *      that mode (e.g. ["clike", "text/x-c++src"]). Unless the mode is located in thirdparty/CodeMirror/mode/<name>/<name>.js,
+     *      that mode (e.g. ["clike", "text/x-c++src"]). Unless the mode is located in thirdparty/CodeMirror/mode/"name"/"name".js,
      *      you need to first load it yourself.
      * @return {$.Promise} A promise object that will be resolved when the mode is loaded and set
      */
@@ -823,7 +843,7 @@ define(function (require, exports, module) {
 
     /**
      * Sets the prefix and suffix to use for blocks comments in this language or prints an error to the console.
-     * @param {!string} prefix Prefix string to use for block comments (e.g. "<!--")
+     * @param {!string} prefix Prefix string to use for block comments (e.g. "< !--")
      * @param {!string} suffix Suffix string to use for block comments (e.g. "-->")
      * @return {boolean} Whether the syntax was valid and set or not
      */
@@ -854,6 +874,7 @@ define(function (require, exports, module) {
     /**
      * Overrides a mode-to-language association for this particular language only or prints an error to the console.
      * Used to disambiguate modes used by multiple languages.
+     * @private
      * @param {!string} mode The mode to associate the language with
      * @param {!Language} language The language to associate with the mode
      * @return {boolean} Whether the mode-to-language association was valid and set or not
@@ -881,8 +902,8 @@ define(function (require, exports, module) {
 
     /**
      * Trigger the "languageModified" event if this language is registered already
-     * @see #_triggerLanguageModified
      * @private
+     * @see #_triggerLanguageModified
      */
     Language.prototype._wasModified = function () {
         if (_languages[this._id]) {
@@ -900,6 +921,7 @@ define(function (require, exports, module) {
 
     /**
      * Sets whether or not the language is binary
+     * @private
      * @param {!boolean} isBinary
      */
     Language.prototype._setBinary = function (isBinary) {
@@ -914,10 +936,10 @@ define(function (require, exports, module) {
      * @param {!string}               definition.name           Human-readable name of the language, as it's commonly referred to (e.g. "C++")
      * @param {Array.<string>}        definition.fileExtensions List of file extensions used by this language (e.g. ["php", "php3"] or ["coffee.md"] - may contain dots)
      * @param {Array.<string>}        definition.fileNames      List of exact file names (e.g. ["Makefile"] or ["package.json]). Higher precedence than file extension.
-     * @param {Array.<string>}        definition.blockComment   Array with two entries defining the block comment prefix and suffix (e.g. ["<!--", "-->"])
+     * @param {Array.<string>}        definition.blockComment   Array with two entries defining the block comment prefix and suffix (e.g. ["< !--", "-->"])
      * @param {(string|Array.<string>)} definition.lineComment  Line comment prefixes (e.g. "//" or ["//", "#"])
      * @param {(string|Array.<string>)} definition.mode         CodeMirror mode (e.g. "htmlmixed"), optionally with a MIME mode defined by that mode ["clike", "text/x-c++src"]
-     *                                                          Unless the mode is located in thirdparty/CodeMirror/mode/<name>/<name>.js, you need to first load it yourself.
+     *                                                          Unless the mode is located in thirdparty/CodeMirror/mode/"name"/"name".js, you need to first load it yourself.
      *
      * @return {$.Promise} A promise object that will be resolved with a Language object
      **/

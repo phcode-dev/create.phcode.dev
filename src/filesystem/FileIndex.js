@@ -19,6 +19,9 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
+
 /**
  * FileIndex is an internal module used by FileSystem to maintain an index of all files and directories.
  *
@@ -39,7 +42,7 @@ define(function (require, exports, module) {
 
     /**
      * Master index
-     *
+     * @private
      * @type {Object.<string, File|Directory>} Maps a fullPath to a File or Directory object
      */
     FileIndex.prototype._index = null;

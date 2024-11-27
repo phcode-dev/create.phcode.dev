@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /**
  * ViewStateManager is a singleton for views to park their global viwe state. The state is saved
  * with project data but the View or View Factory is responsible for restoring the view state
@@ -50,7 +52,8 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Sets the view state for the specfied file
+     * Sets the view state for the specified file
+     * @private
      * @param {!File} file - the file to record the view state for
      * @param {?*} viewState - any data that the view needs to restore the view state.
      */

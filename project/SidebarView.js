@@ -21,6 +21,8 @@
 
 /*global Phoenix*/
 
+// @INCLUDE_IN_API_DOCS
+
 /**
  * The view that controls the showing and hiding of the sidebar.
  *
@@ -248,6 +250,7 @@ define(function (require, exports, module) {
 
     /**
      * Register Command Handlers
+     * @private
      */
     _cmdSplitNone       = CommandManager.register(Strings.CMD_SPLITVIEW_NONE,       Commands.CMD_SPLITVIEW_NONE,       _handleSplitViewNone);
     _cmdSplitVertical   = CommandManager.register(Strings.CMD_SPLITVIEW_VERTICAL,   Commands.CMD_SPLITVIEW_VERTICAL,   _handleSplitViewVertical);

@@ -389,11 +389,15 @@ define({
      * StatusBar strings
      */
     "STATUSBAR_CURSOR_POSITION": "Line {0}, Column {1}",
+    "STATUSBAR_CURSOR_POSITION_SHORT": "{0} : {1}",
+    "STATUSBAR_CURSOR_GOTO": "Click to Go To another :Line",
+    "STATUSBAR_SELECTION_SHORT_DO_NOT_TRANSLATE": " \u2014 Sel {0}",
     "STATUSBAR_SELECTION_CH_SINGULAR": " \u2014 Selected {0} column",
     "STATUSBAR_SELECTION_CH_PLURAL": " \u2014 Selected {0} columns",
     "STATUSBAR_SELECTION_LINE_SINGULAR": " \u2014 Selected {0} line",
     "STATUSBAR_SELECTION_LINE_PLURAL": " \u2014 Selected {0} lines",
-    "STATUSBAR_SELECTION_MULTIPLE": " \u2014 {0} selections",
+    "STATUSBAR_SELECTION_MULTIPLE": " \u2014 {0} Multiple Cursor selections",
+    "STATUSBAR_SELECTION_MULTIPLE_SHORT_DO_NOT_TRANSLATE": " \u2014 Mul {0}",
     "STATUSBAR_INDENT_TOOLTIP_SPACES": "Click to switch indentation to spaces",
     "STATUSBAR_INDENT_TOOLTIP_TABS": "Click to switch indentation to tabs",
     "STATUSBAR_INDENT_SIZE_TOOLTIP_SPACES": "Click to change number of spaces used when indenting",
@@ -421,6 +425,8 @@ define({
     "STATUSBAR_TASKS_PAUSE": "Pause",
     "STATUSBAR_TASKS_STOP": "Stop",
     "STATUSBAR_TASKS_RESTART": "Restart",
+    "STATUSBAR_SHOW_PANELS": "Show Panels",
+    "STATUSBAR_SHOW_GIT": "Git Panel",
 
     // CodeInspection: errors/warnings
     "ERRORS_NO_FILE": "No File Open",
@@ -564,6 +570,7 @@ define({
     "CMD_THEMES": "Themes\u2026",
     "CMD_TOGGLE_SEARCH_AUTOHIDE": "Automatically close search",
     "CMD_TOGGLE_RULERS": "Rulers",
+    "CMD_TOGGLE_INDENT_GUIDES": "Indent Guide Lines",
     "CMD_KEYBOARD_NAV_OVERLAY": "Visual Command Palette",
 
     // Navigate menu commands
@@ -677,9 +684,11 @@ define({
 
     // Strings for themes-settings.html and themes-general.html
     "CURRENT_THEME": "Current Theme",
+    "GET_MORE_THEMES": "Get More...",
     "USE_THEME_SCROLLBARS": "Use Theme Scrollbars",
     "FONT_SIZE": "Font Size",
     "FONT_FAMILY": "Font Family",
+    "FONT_LINE_HEIGHT": "Line Height",
     "THEMES_SETTINGS": "Themes Settings",
     "THEMES_ERROR": "Themes Error",
     "THEMES_ERROR_CANNOT_APPLY": "Could not apply theme due to an error.",
@@ -803,6 +812,8 @@ define({
     "EXTENSIONS_UPDATES_TITLE": "Updates",
     "EXTENSIONS_LAST_UPDATED": "Last Updated",
     "EXTENSIONS_DOWNLOADS": "Downloads",
+    "EXTENSIONS_REGISTRY_TASK_TITLE": "Updating Extension List",
+    "EXTENSIONS_REGISTRY_TASK_MESSAGE": "Downloading\u2026",
 
     "INLINE_EDITOR_NO_MATCHES": "No matches available.",
     "INLINE_EDITOR_HIDDEN_MATCHES": "All matches are collapsed. Expand the files listed at right to view matches.",
@@ -1044,6 +1055,7 @@ define({
     "DESCRIPTION_NUMBER_QUICK_VIEW": "true to show Quick View on hover over numbers in editor",
     "DESCRIPTION_THEME": "Select a {APP_NAME} theme",
     "DESCRIPTION_USE_THEME_SCROLLBARS": "true to allow custom scroll bars",
+    "DESCRIPTION_EDITOR_LINE_HEIGHT": "Adjust the vertical spacing between lines of code in the editor. Choose a value between 1 and 3, default is 1.5",
     "DESCRIPTION_LINTING_COLLAPSED": "true to collapse linting panel",
     "DESCRIPTION_FONT_FAMILY": "Change font family",
     "DESCRIPTION_DESKTOP_ZOOM_SCALE": "Choose a zoom scale factor ranging from 0.1 (for a more compact view) to 2 (for a larger, more magnified view). Available in desktop apps only",
@@ -1235,5 +1247,8 @@ define({
     "BEAUTIFY_OPTION_BRACKET_SAME_LINE": "Put the > of a multi-line HTML (HTML, JSX, Vue, Angular) element at the end of the last line instead of being alone on the next line (does not apply to self closing elements)",
     "BEAUTIFY_OPTION_SINGLE_ATTRIBUTE_PER_LINE": "Enforce single attribute per line in HTML, Vue and JSX",
     "BEAUTIFY_OPTION_PROSE_WRAP": "Wrap prose if it exceeds the print width in markdown files",
-    "BEAUTIFY_OPTION_PRINT_TRAILING_COMMAS": "Print trailing commas wherever possible in multi-line comma-separated syntactic structures"
+    "BEAUTIFY_OPTION_PRINT_TRAILING_COMMAS": "Print trailing commas wherever possible in multi-line comma-separated syntactic structures",
+    // indent guides extension
+    "DESCRIPTION_INDENT_GUIDES_ENABLED": "true to show indent guide lines, else false.",
+    "DESCRIPTION_HIDE_FIRST": "true to show the first Indent Guide line else false."
 });

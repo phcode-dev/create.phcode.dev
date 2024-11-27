@@ -55,11 +55,13 @@
  *
  * ## Usage
  * ### Importing from an extension
+ * @example
  * ```js
  * const EventDispatcher = brackets.getModule("utils/EventDispatcher");
  * ```
  * ### Using the global object
  * The EventDispatcher Object is available within the global context, be it phoenix or phoenix core web workers or node.
+ * @example
  * ```js
  * window.EventDispatcher.makeEventDispatcher(exports); // within phoenix require module
  * self.EventDispatcher.makeEventDispatcher(object); // within web worker
@@ -67,6 +69,7 @@
  * ```
  *
  * If you wish to import event dispatcher to your custom web worker, use the following
+ * @example
  * ```js
  * importScripts('<relative path from your extension>/utils/EventDispatcher');
  * // this will add the global EventDispatcher to your web-worker. Note that the EventDispatcher in the web worker
@@ -76,6 +79,7 @@
  * self.EventDispatcher.trigger("someEvent"); // within web worker
  * ```
  * ### Sample Usage within extension
+ * @example
  * ```js
  * // in your extension js file.
  * define (function (require, exports, module) {
@@ -136,7 +140,8 @@
 
     /**
      * Split "event.namespace" string into its two parts; both parts are optional.
-     * @param {string} eventName Event name and/or trailing ".namespace"
+     *
+     * @param {string} eventStr Event name and/or trailing ".namespace"
      * @return {!{event:string, ns:string}} Uses "" for missing parts.
      * @type {function}
      */
@@ -153,6 +158,7 @@
      * By default, we consider any events having more than 15 listeners to be leaky. But sometimes there may be
      * genuine use cases where an event can have a large number of listeners. For those events, it is recommended
      * to increase the leaky warning threshold individually with this API.
+     *
      * @param {string} eventName
      * @param {number} threshold - The new threshold to set. Will only be set if the new threshold is greater than
      * the current threshold.
@@ -172,6 +178,7 @@
      * Adds the given handler function to 'events': a space-separated list of one or more event names, each
      * with an optional ".namespace" (used by off() - see below). If the handler is already listening to this
      * event, a duplicate copy is added.
+     *
      * @param {string} events
      * @param {!function(!{type:string, target:!Object}, ...)} fn
      * @type {function}
@@ -226,6 +233,7 @@
      * 'events' can be: bare event name, bare .namespace, or event.namespace pair. This yields a set of
      * matching handlers. If 'fn' is omitted, all these handlers are removed. If 'fn' is provided,
      * only handlers exactly equal to 'fn' are removed (there may still be >1, if duplicates were added).
+     *
      * @param {string} events
      * @param {?function(!{type:string, target:!Object}, ...)} fn
      * @type {function}
@@ -283,6 +291,7 @@
 
     /**
      * Attaches a handler so it's only called once (per event in the 'events' list).
+     *
      * @param {string} events
      * @param {?function(!{type:string, target:!Object}, ...)} fn
      * @type {function}
@@ -302,6 +311,7 @@
 
     /**
      * Invokes all handlers for the given event (in the order they were added).
+     *
      * @param {string} eventName
      * @param {*} ... Any additional args are passed to the event handler after the event object
      * @type {function}
@@ -336,6 +346,7 @@
     /**
      * Adds the EventDispatcher APIs to the given object: on(), one(), off(), and trigger(). May also be
      * called on a prototype object - each instance will still behave independently.
+     *
      * @param {!Object} obj Object to add event-dispatch methods to
      * @type {function}
      */
@@ -355,6 +366,7 @@
     /**
      * Utility for calling on() with an array of arguments to pass to event handlers (rather than a varargs
      * list). makeEventDispatcher() must have previously been called on 'dispatcher'.
+     *
      * @param {!Object} dispatcher
      * @param {string} eventName
      * @param {!Array.<*>} argsArray
@@ -389,6 +401,7 @@
      * May be called before makeEventDispatcher(). May be called on a prototype where makeEventDispatcher()
      * is called separately per instance (i.e. in the constructor). Should be called before clients have
      * a chance to start calling on().
+     *
      * @param {!Object} obj Event dispatcher object
      * @param {string} eventName Name of deprecated event
      * @param {string=} insteadStr Suggested thing to use instead
@@ -416,4 +429,3 @@
         defineRequire();
     }
 }());
-

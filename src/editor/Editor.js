@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /**
  * Editor is a 1-to-1 wrapper for a CodeMirror editor instance. It layers on Brackets-specific
  * functionality and provides APIs that cleanly pass through the bits of CodeMirror that the rest
@@ -71,24 +73,24 @@
 define(function (require, exports, module) {
 
 
-    let CommandManager     = require("command/CommandManager"),
-        Commands           = require("command/Commands"),
-        CodeMirror         = require("thirdparty/CodeMirror/lib/codemirror"),
-        LanguageManager    = require("language/LanguageManager"),
-        EventDispatcher    = require("utils/EventDispatcher"),
-        PerfUtils          = require("utils/PerfUtils"),
+    let CommandManager = require("command/CommandManager"),
+        Commands = require("command/Commands"),
+        CodeMirror = require("thirdparty/CodeMirror/lib/codemirror"),
+        LanguageManager = require("language/LanguageManager"),
+        EventDispatcher = require("utils/EventDispatcher"),
+        PerfUtils = require("utils/PerfUtils"),
         PreferencesManager = require("preferences/PreferencesManager"),
-        StateManager       = require("preferences/StateManager"),
-        TextRange          = require("document/TextRange").TextRange,
-        TokenUtils         = require("utils/TokenUtils"),
-        HTMLUtils          = require("language/HTMLUtils"),
-        MainViewManager    = require("view/MainViewManager"),
-        Metrics            = require("utils/Metrics"),
-        _                  = require("thirdparty/lodash");
+        StateManager = require("preferences/StateManager"),
+        TextRange = require("document/TextRange").TextRange,
+        TokenUtils = require("utils/TokenUtils"),
+        HTMLUtils = require("language/HTMLUtils"),
+        MainViewManager = require("view/MainViewManager"),
+        Metrics = require("utils/Metrics"),
+        _ = require("thirdparty/lodash");
 
     const tabSpacesStateManager = StateManager._createInternalStateManager(StateManager._INTERNAL_STATES.TAB_SPACES);
 
-    /** Editor helpers */
+    /* Editor helpers */
 
     let IndentHelper = require("./EditorHelper/IndentHelper"),
         EditorPreferences = require("./EditorHelper/EditorPreferences"),
@@ -96,59 +98,74 @@ define(function (require, exports, module) {
         ErrorPopupHelper = require("./EditorHelper/ErrorPopupHelper"),
         InlineWidgetHelper = require("./EditorHelper/InlineWidgetHelper");
 
-    /** Editor preferences */
+    /* Editor preferences */
 
     /**
      * A list of gutter name and priorities currently registered for editors.
-     * The line number gutter is defined as { name: LINE_NUMBER_GUTTER, priority: 100 }
-     * @type {Array.<{name: string, priority: number, languageIds: Array}}
+     * The line number gutter is defined as \{ name: LINE_NUMBER_GUTTER, priority: 100 }
+     * @private
+     * @type {Array<Object>} items - An array of objects, where each object contains the following properties:
+     * @property {string} name - The name of the item.
+     * @property {number} priority - The priority of the item.
+     * @property {Array} languageIds - An array of language IDs.
      */
     let registeredGutters = [];
 
-    let cmOptions         = {};
+    let cmOptions = {};
 
     EditorPreferences.init(cmOptions);
 
-    const CLOSE_BRACKETS    = EditorPreferences.CLOSE_BRACKETS,
-        CLOSE_TAGS          = EditorPreferences.CLOSE_TAGS,
-        DRAG_DROP           = EditorPreferences.DRAG_DROP,
-        HIGHLIGHT_MATCHES   = EditorPreferences.HIGHLIGHT_MATCHES,
-        LINEWISE_COPY_CUT   = EditorPreferences.LINEWISE_COPY_CUT,
-        SCROLL_PAST_END     = EditorPreferences.SCROLL_PAST_END,
-        SHOW_CURSOR_SELECT  = EditorPreferences.SHOW_CURSOR_SELECT,
-        SHOW_LINE_NUMBERS   = EditorPreferences.SHOW_LINE_NUMBERS,
-        SMART_INDENT        = EditorPreferences.SMART_INDENT,
-        SPACE_UNITS         = EditorPreferences.SPACE_UNITS,
-        STYLE_ACTIVE_LINE   = EditorPreferences.STYLE_ACTIVE_LINE,
-        TAB_SIZE            = EditorPreferences.TAB_SIZE,
-        AUTO_TAB_SPACES     = EditorPreferences.AUTO_TAB_SPACES,
-        USE_TAB_CHAR        = EditorPreferences.USE_TAB_CHAR,
-        WORD_WRAP           = EditorPreferences.WORD_WRAP,
+    const CLOSE_BRACKETS = EditorPreferences.CLOSE_BRACKETS,
+        CLOSE_TAGS = EditorPreferences.CLOSE_TAGS,
+        DRAG_DROP = EditorPreferences.DRAG_DROP,
+        HIGHLIGHT_MATCHES = EditorPreferences.HIGHLIGHT_MATCHES,
+        LINEWISE_COPY_CUT = EditorPreferences.LINEWISE_COPY_CUT,
+        SCROLL_PAST_END = EditorPreferences.SCROLL_PAST_END,
+        SHOW_CURSOR_SELECT = EditorPreferences.SHOW_CURSOR_SELECT,
+        SHOW_LINE_NUMBERS = EditorPreferences.SHOW_LINE_NUMBERS,
+        SMART_INDENT = EditorPreferences.SMART_INDENT,
+        SPACE_UNITS = EditorPreferences.SPACE_UNITS,
+        STYLE_ACTIVE_LINE = EditorPreferences.STYLE_ACTIVE_LINE,
+        TAB_SIZE = EditorPreferences.TAB_SIZE,
+        AUTO_TAB_SPACES = EditorPreferences.AUTO_TAB_SPACES,
+        USE_TAB_CHAR = EditorPreferences.USE_TAB_CHAR,
+        WORD_WRAP = EditorPreferences.WORD_WRAP,
         INDENT_LINE_COMMENT = EditorPreferences.INDENT_LINE_COMMENT,
-        INPUT_STYLE         = EditorPreferences.INPUT_STYLE;
+        INPUT_STYLE = EditorPreferences.INPUT_STYLE;
 
     const LINE_NUMBER_GUTTER = EditorPreferences.LINE_NUMBER_GUTTER,
-        LINE_NUMBER_GUTTER_PRIORITY     = EditorPreferences.LINE_NUMBER_GUTTER_PRIORITY,
-        CODE_FOLDING_GUTTER_PRIORITY    = EditorPreferences.CODE_FOLDING_GUTTER_PRIORITY;
+        LINE_NUMBER_GUTTER_PRIORITY = EditorPreferences.LINE_NUMBER_GUTTER_PRIORITY,
+        CODE_FOLDING_GUTTER_PRIORITY = EditorPreferences.CODE_FOLDING_GUTTER_PRIORITY;
 
     let editorOptions = [...Object.keys(cmOptions), AUTO_TAB_SPACES];
 
-    /** Editor preferences */
+    /* Editor preferences */
 
     /**
      * Guard flag to prevent focus() reentrancy (via blur handlers), even across Editors
+     * @private
      * @type {boolean}
      */
     var _duringFocus = false;
 
     /**
-     * Constant: ignore upper boundary when centering text
-     * Constant: bulls-eye = strictly centre always
+     * Constant: Normal boundary check when centering text.
      * @type {number}
      */
-    var BOUNDARY_CHECK_NORMAL   = 0,
-        BOUNDARY_IGNORE_TOP     = 1,
-        BOUNDARY_BULLSEYE      = 2;
+    const BOUNDARY_CHECK_NORMAL = 0;
+
+    /**
+     * Constant: Ignore the upper boundary when centering text.
+     * @type {number}
+     */
+    const BOUNDARY_IGNORE_TOP = 1;
+
+    /**
+     * Constant: Bulls-eye mode, strictly center the text always.
+     * @type {number}
+     */
+    const BOUNDARY_BULLSEYE = 2;
+
 
     /**
      * @private
@@ -162,6 +179,7 @@ define(function (require, exports, module) {
 
     /**
      * Helper functions to check options.
+     * @private
      * @param {number} options BOUNDARY_CHECK_NORMAL or BOUNDARY_IGNORE_TOP
      */
     function _checkTopBoundary(options) {
@@ -175,7 +193,7 @@ define(function (require, exports, module) {
     /**
      * Helper function to build preferences context based on the full path of
      * the file.
-     *
+     * @private
      * @param {string} fullPath Full path of the file
      *
      * @return {*} A context for the specified file name
@@ -188,6 +206,7 @@ define(function (require, exports, module) {
     /**
      * List of all current (non-destroy()ed) Editor instances. Needed when changing global preferences
      * that affect all editors, e.g. tabbing or color scheme settings.
+     * @private
      * @type {Array.<Editor>}
      */
     var _instances = [];
@@ -282,14 +301,14 @@ define(function (require, exports, module) {
                 self._handleSoftTabNavigation(1, "deleteH");
             },
             "Esc": function (_instance) {
-                if(!self.canConsumeEscapeKeyEvent()){
+                if (!self.canConsumeEscapeKeyEvent()) {
                     return;
                 }
                 if (self.getSelections().length > 1) { // multi cursor
                     self.clearSelection();
-                } else if(self.hasSelection()){
+                } else if (self.hasSelection()) {
                     self.clearSelection();
-                }else {
+                } else {
                     self.removeAllInlineWidgets();
                 }
             },
@@ -309,8 +328,8 @@ define(function (require, exports, module) {
         //cm: CodeMirror, repeat: "single" | "double" | "triple", event: Event
         // The function is called when the left mouse button is pressed in codemirror
         function _mouseHandlerOverride(_cm, _repeat, event) {
-            if(event.ctrlKey || event.metaKey){
-                setTimeout(()=>{
+            if (event.ctrlKey || event.metaKey) {
+                setTimeout(() => {
                     CommandManager.execute(Commands.NAVIGATE_JUMPTO_DEFINITION);
                     Metrics.countEvent(Metrics.EVENT_TYPE.EDITOR, "ctrlClick", _cm.getMode().name);
                 }, 100);
@@ -411,10 +430,23 @@ define(function (require, exports, module) {
         });
 
         // Add an $el getter for Pane Views
-        Object.defineProperty(this,  "$el", {
+        Object.defineProperty(this, "$el", {
             get: function () {
                 return $(this.getRootElement());
             }
+        });
+
+        const $cmElement = this.$el;
+        $cmElement[0].addEventListener("wheel", (event) => {
+            const $editor = $cmElement.find(".CodeMirror-scroll");
+            // we need to slow down the scroll by the factor of line height. else the scrolling is too fast.
+            // this became a problem after we added the custom line height feature causing jumping scrolls esp in safari
+            // and mac if we dont do this scroll scaling.
+            const lineHeight = parseFloat(getComputedStyle($editor[0]).lineHeight);
+            const scrollDelta = event.deltaY;
+            const defaultHeight = 14, scrollScaleFactor = lineHeight/defaultHeight;
+            $editor[0].scrollTop += (scrollDelta/scrollScaleFactor);
+            event.preventDefault();
         });
     }
 
@@ -445,7 +477,7 @@ define(function (require, exports, module) {
         let self = this;
         let cursor = self.getCursorPos();
         let line = cursor.line;
-        return  self.getAllInlineWidgetsForLine(line);
+        return self.getAllInlineWidgetsForLine(line);
     };
 
     /**
@@ -519,8 +551,8 @@ define(function (require, exports, module) {
      * Removes any whitespace after one of ]{}) to prevent trailing whitespace when auto-indenting
      */
     Editor.prototype._handleWhitespaceForElectricChars = function () {
-        var self        = this,
-            instance    = this._codeMirror,
+        var self = this,
+            instance = this._codeMirror,
             selections,
             lineStr;
 
@@ -554,6 +586,7 @@ define(function (require, exports, module) {
     /**
      * Determine the mode to use from the document's language
      * Uses "text/plain" if the language does not define a mode
+     * @private
      * @return {string} The mode to use
      */
     Editor.prototype._getModeFromDocument = function () {
@@ -589,6 +622,7 @@ define(function (require, exports, module) {
     /**
      * Ensures that the lines that are actually hidden in the inline editor correspond to
      * the desired visible range.
+     * @private
      */
     Editor.prototype._updateHiddenLines = function () {
         if (this._visibleRange) {
@@ -610,6 +644,7 @@ define(function (require, exports, module) {
     /**
      * Sets the contents of the editor, clears the undo/redo history and marks the document clean. Dispatches a change event.
      * Semi-private: only Document should call this.
+     * @private
      * @param {!string} text
      */
     Editor.prototype._resetText = function (text) {
@@ -644,11 +679,11 @@ define(function (require, exports, module) {
         PerfUtils.addMeasurement(perfTimerName);
     };
 
-   /**
-    * Gets the file associated with this editor
-    * This is a required Pane-View interface method
-    * @return {!File} the file associated with this editor
-    */
+    /**
+     * Gets the file associated with this editor
+     * This is a required Pane-View interface method
+     * @return {!File} the file associated with this editor
+     */
     Editor.prototype.getFile = function () {
         return this.document.file;
     };
@@ -664,7 +699,7 @@ define(function (require, exports, module) {
      *  selection to return. It may be "start", "end", "head" (the side of the
      *  selection that moves when you press shift+arrow), or "anchor" (the
      *  fixed side of the selection). Omitting the argument is the same as
-     *  passing "head". A {line, ch} object will be returned.)
+     *  passing "head". A {'line', 'ch'} object will be returned.)
      * @return {{line:number, ch:number}}
      */
     Editor.prototype.getCursorPos = function (expandTabs, which) {
@@ -710,9 +745,9 @@ define(function (require, exports, module) {
      * @return {number}
      */
     Editor.prototype.getColOffset = function (pos) {
-        var line    = this._codeMirror.getRange({line: pos.line, ch: 0}, pos),
+        var line = this._codeMirror.getRange({ line: pos.line, ch: 0 }, pos),
             tabSize = null,
-            column  = 0,
+            column = 0,
             i;
 
         for (i = 0; i < line.length; i++) {
@@ -738,9 +773,9 @@ define(function (require, exports, module) {
      * @return {number}
      */
     Editor.prototype.getCharIndexForColumn = function (lineNum, column) {
-        var line    = this._codeMirror.getLine(lineNum),
+        var line = this._codeMirror.getLine(lineNum),
             tabSize = null,
-            iCol    = 0,
+            iCol = 0,
             i;
 
         for (i = 0; iCol < column; i++) {
@@ -768,7 +803,7 @@ define(function (require, exports, module) {
      */
     Editor.prototype.setCursorPos = function (line, ch, center, expandTabs) {
         if (expandTabs) {
-            ch = this.getColOffset({line: line, ch: ch});
+            ch = this.getColOffset({ line: line, ch: ch });
         }
         this._codeMirror.setCursor(line, ch);
         if (center) {
@@ -787,7 +822,7 @@ define(function (require, exports, module) {
 
 
     /**
-     * Returns a {from, to} object indicating the start (inclusive) and end (exclusive) of the currently rendered
+     * Returns a {'from', 'to'} object indicating the start (inclusive) and end (exclusive) of the currently rendered
      * part of the document. In big documents, when most content is scrolled out of view, Editor will only render
      * the visible part, and a margin around it. See also the `viewportChange` event fired on the editor.
      *
@@ -821,7 +856,7 @@ define(function (require, exports, module) {
         let documentCursorPosition = this._codeMirror.cursorCoords(null, "local").bottom;
         let screenCursorPosition = this._codeMirror.cursorCoords(null, "page").bottom;
 
-        if(centerOptions === BOUNDARY_BULLSEYE){
+        if (centerOptions === BOUNDARY_BULLSEYE) {
             let pos = documentCursorPosition - editorHeight / 2 + statusBarHeight;
             this.setScrollPos(null, pos);
             return;
@@ -835,7 +870,7 @@ define(function (require, exports, module) {
         // not center if hit is in first half of screen because this
         // appears to be an unnecesary scroll.
         if ((_checkTopBoundary(centerOptions) && (screenCursorPosition < editorHeight * CENTERING_MARGIN)) ||
-                (_checkBottomBoundary(centerOptions) && (screenCursorPosition > editorHeight * (1 - CENTERING_MARGIN)))) {
+            (_checkBottomBoundary(centerOptions) && (screenCursorPosition > editorHeight * (1 - CENTERING_MARGIN)))) {
 
             var pos = documentCursorPosition - editorHeight / 2 + statusBarHeight;
             var info = this._codeMirror.getScrollInfo();
@@ -875,10 +910,10 @@ define(function (require, exports, module) {
         if (start.line <= pos.line && end.line >= pos.line) {
             if (endInclusive) {
                 return (start.line < pos.line || start.ch <= pos.ch) &&  // inclusive
-                    (end.line > pos.line   || end.ch >= pos.ch);      // inclusive
+                    (end.line > pos.line || end.ch >= pos.ch);      // inclusive
             }
             return (start.line < pos.line || start.ch <= pos.ch) &&  // inclusive
-                    (end.line > pos.line   || end.ch > pos.ch);       // exclusive
+                (end.line > pos.line || end.ch > pos.ch);       // exclusive
 
 
         }
@@ -893,18 +928,27 @@ define(function (require, exports, module) {
     };
 
     /**
+     * Takes an anchor/head pair and returns a start/end pair where the start is guaranteed to be <= end, 
+     * and a "reversed" flag indicating if the head is before the anchor.
      * @private
-     * Takes an anchor/head pair and returns a start/end pair where the start is guaranteed to be <= end, and a "reversed" flag indicating
-     * if the head is before the anchor.
-     * @param {!{line: number, ch: number}} anchorPos
-     * @param {!{line: number, ch: number}} headPos
-     * @return {!{start:{line:number, ch:number}, end:{line:number, ch:number}}, reversed:boolean} the normalized range with start <= end
+     * @typedef {Object} Position
+     * @property {number} line - Line number
+     * @property {number} ch - Character position
+     * 
+     * @typedef {Object} NormalizedRange
+     * @property {Position} start - Start position
+     * @property {Position} end - End position
+     * @property {boolean} reversed - Whether the range is reversed
+     * 
+     * @param {Position} anchorPos - The anchor position
+     * @param {Position} headPos - The head position
+     * @return {NormalizedRange} The normalized range with start <= end
      */
     function _normalizeRange(anchorPos, headPos) {
         if (headPos.line < anchorPos.line || (headPos.line === anchorPos.line && headPos.ch < anchorPos.ch)) {
-            return {start: _copyPos(headPos), end: _copyPos(anchorPos), reversed: true};
+            return { start: _copyPos(headPos), end: _copyPos(anchorPos), reversed: true };
         }
-        return {start: _copyPos(anchorPos), end: _copyPos(headPos), reversed: false};
+        return { start: _copyPos(anchorPos), end: _copyPos(headPos), reversed: false };
 
     }
 
@@ -928,14 +972,14 @@ define(function (require, exports, module) {
      * (the end of the selection that would be changed if the user extended the selection)
      * is before the anchor.
      * If `primary` is set, then that selection is the primary selection.
-     * @return {Array.<{start:{line:number, ch:number}, end:{line:number, ch:number}, reversed:boolean, primary:boolean}>}
+     * @return {{start:{line:number, ch:number}, end:{line:number, ch:number}, reversed:boolean, primary:boolean[]}}
      */
     Editor.prototype.getSelections = function () {
         var primarySel = this.getSelection();
         return _.map(this._codeMirror.listSelections(), function (sel) {
             var result = _normalizeRange(sel.anchor, sel.head);
             if (result.start.line === primarySel.start.line && result.start.ch === primarySel.start.ch &&
-                    result.end.line === primarySel.end.line && result.end.ch === primarySel.end.ch) {
+                result.end.line === primarySel.end.line && result.end.ch === primarySel.end.ch) {
                 result.primary = true;
             } else {
                 result.primary = false;
@@ -959,14 +1003,13 @@ define(function (require, exports, module) {
      * line selection (there might be multiple if individual selections were merged into a single line selection).
      * Useful for doing multiple-selection-aware line edits.
      *
-     * @param {Array.<{start:{line:number, ch:number}, end:{line:number, ch:number}, reversed:boolean, primary:boolean}>} selections
+     * @param {{start:{line:number, ch:number}, end:{line:number, ch:number}, reversed:boolean, primary:boolean}} selections
      *      The selections to expand.
      * @param {{expandEndAtStartOfLine: boolean, mergeAdjacent: boolean}} options
      *      expandEndAtStartOfLine: true if a range selection that ends at the beginning of a line should be expanded
      *          to encompass the line. Default false.
      *      mergeAdjacent: true if adjacent line ranges should be merged. Default true.
-     * @return {Array.<{selectionForEdit: {start:{line:number, ch:number}, end:{line:number, ch:number}, reversed:boolean, primary:boolean},
-     *                  selectionsToTrack: Array.<{start:{line:number, ch:number}, end:{line:number, ch:number}, reversed:boolean, primary:boolean}>}>}
+     * @return {{selectionForEdit: {start: {line: number, ch: number}, end: {line: number, ch: number}, reversed: boolean, primary: boolean}, selectionsToTrack: {start: {line: number, ch: number}, end: {line: number, ch: number}, reversed: boolean, primary: boolean}}}
      *      The combined line selections. For each selection, `selectionForEdit` is the line selection, and `selectionsToTrack` is
      *      the set of original selections that combined to make up the given line selection. Note that the selectionsToTrack will
      *      include the original objects passed in `selections`, so if it is later mutated the original passed-in selections will be
@@ -989,7 +1032,7 @@ define(function (require, exports, module) {
             // or if expandEndAtStartOfLine is set.
             var hasSelection = (newSel.start.line !== newSel.end.line) || (newSel.start.ch !== newSel.end.ch);
             if (options.expandEndAtStartOfLine || !hasSelection || newSel.end.ch !== 0) {
-                newSel.end = {line: newSel.end.line + 1, ch: 0};
+                newSel.end = { line: newSel.end.line + 1, ch: 0 };
             }
 
             // If the start of the new selection is within the range of the previous (expanded) selection, merge
@@ -1000,7 +1043,7 @@ define(function (require, exports, module) {
                 prevSel.selectionForEdit.end.line = newSel.end.line;
                 prevSel.selectionsToTrack.push(sel);
             } else {
-                prevSel = {selectionForEdit: newSel, selectionsToTrack: [sel]};
+                prevSel = { selectionForEdit: newSel, selectionsToTrack: [sel] };
                 combinedSelections.push(prevSel);
             }
         });
@@ -1025,7 +1068,7 @@ define(function (require, exports, module) {
     };
 
     /**
-     * Given an {left, top} object (e.g. coordinates of a mouse event) returns the {line, ch} position that
+     * Given an {'left', 'top'} object (e.g. coordinates of a mouse event) returns the {'line', 'ch'} position that
      * corresponds to it. The optional mode parameter determines relative to what the coordinates are interpreted.
      *
      * @param {{left: number, top:number}} coordinates can be obtained from Eg. coordinates of a mouse event
@@ -1084,7 +1127,7 @@ define(function (require, exports, module) {
             return null;
         }
 
-        return cm.getRange(pos, {line: pos.line, ch: pos.ch + 1});
+        return cm.getRange(pos, { line: pos.line, ch: pos.ch + 1 });
     };
 
     /**
@@ -1097,10 +1140,10 @@ define(function (require, exports, module) {
      *                        otherwise `null` if the position is out of range.
      */
     Editor.prototype.getPrevCharacterAtPosition = function (pos) {
-        if(pos.ch === 0) {
+        if (pos.ch === 0) {
             return null;
         }
-        return this.getCharacterAtPosition({line: pos.line, ch: pos.ch-1});
+        return this.getCharacterAtPosition({ line: pos.line, ch: pos.ch - 1 });
     };
 
     /**
@@ -1115,9 +1158,9 @@ define(function (require, exports, module) {
      */
     Editor.prototype.getNextToken = function (cursor, skipWhitespace = true, precise) {
         cursor = Object.assign({}, cursor || this.getCursorPos());
-        let token   = this.getToken(cursor, precise),
-            next    = token,
-            doc     = this.document;
+        let token = this.getToken(cursor, precise),
+            next = token,
+            doc = this.document;
         next.line = cursor.line;
 
         do {
@@ -1149,9 +1192,9 @@ define(function (require, exports, module) {
      */
     Editor.prototype.getPreviousToken = function (cursor, skipWhitespace = true, precise) {
         cursor = Object.assign({}, cursor || this.getCursorPos());
-        let token   = this.getToken(cursor, precise),
-            prev    = token,
-            doc     = this.document;
+        let token = this.getToken(cursor, precise),
+            prev = token,
+            doc = this.document;
         prev.line = cursor.line;
 
         do {
@@ -1232,14 +1275,38 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Mark options to use with API with Editor.markText or Editor.markToken.
+     * Mark option to underline errors.
      */
     Editor.getMarkOptionUnderlineError = getMarkOptionUnderlineError;
+
+    /**
+     * Mark option to underline warnings.
+     */
     Editor.getMarkOptionUnderlineWarn = getMarkOptionUnderlineWarn;
+
+    /**
+     * Mark option to underline informational text.
+     */
     Editor.getMarkOptionUnderlineInfo = getMarkOptionUnderlineInfo;
+
+    /**
+     * Mark option to underline spelling errors.
+     */
     Editor.getMarkOptionUnderlineSpellcheck = getMarkOptionUnderlineSpellcheck;
+
+    /**
+     * Mark option to highlight hyperlinks.
+     */
     Editor.getMarkOptionHyperlinkText = getMarkOptionHyperlinkText;
+
+    /**
+     * Mark option for matching references.
+     */
     Editor.getMarkOptionMatchingRefs = getMarkOptionMatchingRefs;
+
+    /**
+     * Mark option for renaming outlines.
+     */
     Editor.getMarkOptionRenameOutline = getMarkOptionRenameOutline;
 
     /**
@@ -1324,8 +1391,8 @@ define(function (require, exports, module) {
      */
     Editor.prototype.markToken = function (markType, cursor, options) {
         let token = this.getToken(cursor);
-        return this.markText(markType, {line: cursor.line, ch: token.start},
-            {line: cursor.line, ch: token.end}, options);
+        return this.markText(markType, { line: cursor.line, ch: token.start },
+            { line: cursor.line, ch: token.end }, options);
     };
 
     /**
@@ -1358,11 +1425,11 @@ define(function (require, exports, module) {
      * @param {{line: number, ch: number}} cursorFrom - Mark start position
      * @param {{line: number, ch: number}} cursorTo - Mark end position
      * @param {string} [markType] - Optional, if given will only return marks of that type. Else returns everything.
-     * @returns {Array[TextMarker]} TextMarker - A text marker array
+     * @returns {TextMarker[]} TextMarker - A text marker array
      */
     Editor.prototype.findMarks = function (cursorFrom, cursorTo, markType) {
         let marks = this._codeMirror.findMarks(cursorFrom, cursorTo) || [];
-        return marks.filter(function (mark){
+        return marks.filter(function (mark) {
             return markType ? mark.markType === markType : true;
         });
     };
@@ -1371,11 +1438,11 @@ define(function (require, exports, module) {
      * Returns an array of all the bookmarks and marked ranges present at the given position.
      * @param {{line: number, ch: number}} cursorPos - cursor position
      * @param {string} [markType] - Optional, if given will only return marks of that type. Else returns everything.
-     * @returns {Array[TextMarker]} TextMarker - A text marker array
+     * @returns {TextMarker[]} TextMarker - A text marker array
      */
     Editor.prototype.findMarksAt = function (cursorPos, markType) {
         let marks = this._codeMirror.findMarksAt(cursorPos) || [];
-        return marks.filter(function (mark){
+        return marks.filter(function (mark) {
             return markType ? mark.markType === markType : true;
         });
     };
@@ -1384,7 +1451,7 @@ define(function (require, exports, module) {
      * Returns the first mark of a specific type found after the given position.
      * @param {{line: number, ch: number}} position - The starting position to search from.
      * @param {string} markType - The type of mark to look for.
-     * @returns {Array[TextMarker]} The array of text markers found, or an empty array if none are found.
+     * @returns {TextMarker[]} The array of text markers found, or an empty array if none are found.
      */
     Editor.prototype.getMarksAfter = function (position, markType) {
         return this.findMarks(position, { line: this.lineCount(), ch: 0 }, markType) || [];
@@ -1394,7 +1461,7 @@ define(function (require, exports, module) {
      * Returns the first mark of a specific type found before the given position.
      * @param {{line: number, ch: number}} position - The ending position to search up to.
      * @param {string} markType - The type of mark to look for.
-     * @returns {Array[TextMarker]} The array of text markers found, or an empty array if none are found.
+     * @returns {TextMarker[]} The array of text markers found, or an empty array if none are found.
      */
     Editor.prototype.getMarksBefore = function (position, markType) {
         return this.findMarks({ line: 0, ch: 0 }, position, markType) || [];
@@ -1403,11 +1470,11 @@ define(function (require, exports, module) {
     /**
      * Returns an array containing all marked ranges in the document.
      * @param {string} [markType] - Optional, if given will only return marks of that type. Else returns everything.
-     * @returns {Array[TextMarker]} TextMarker - A text marker array
+     * @returns {TextMarker[]} TextMarker - A text marker array
      */
     Editor.prototype.getAllMarks = function (markType) {
         let marks = this._codeMirror.getAllMarks() || [];
-        return marks.filter(function (mark){
+        return marks.filter(function (mark) {
             return markType ? mark.markType === markType : true;
         });
     };
@@ -1420,7 +1487,7 @@ define(function (require, exports, module) {
         const self = this;
         self._codeMirror.operation(function () {
             let marks = self.getAllMarks(markType);
-            for(let mark of marks){
+            for (let mark of marks) {
                 mark.clear();
             }
         });
@@ -1433,7 +1500,7 @@ define(function (require, exports, module) {
      * @param {{line: number, ch: number}} position2 - cursor position
      * @returns {boolean} True if both positions are the same, false otherwise.
      */
-    Editor.prototype.isSamePosition = function (position1, position2){
+    Editor.prototype.isSamePosition = function (position1, position2) {
         return position1.line === position2.line && position1.ch === position2.ch;
     };
 
@@ -1458,11 +1525,12 @@ define(function (require, exports, module) {
     /**
      * Creates a named restore point in undo history. this can be later be restored to undo all
      * changed till the named restore point in one go.
+     * @param {string} restorePointName - The name of the restore point to revert to.
      */
     Editor.prototype.createHistoryRestorePoint = function (restorePointName) {
         const history = this.getHistory();
-        if(history.done && history.done.length) {
-            history.done[history.done.length -1].restorePointName = restorePointName;
+        if (history.done && history.done.length) {
+            history.done[history.done.length - 1].restorePointName = restorePointName;
         }
         // the current history event should be ‘closed’, meaning it can't be combined with further changes
         // (rapid typing or deleting events are typically combined) as we need to effectively snapshot this history
@@ -1470,21 +1538,27 @@ define(function (require, exports, module) {
         this._codeMirror.changeGeneration(true);
     };
 
+    /**
+     * To restore the editor to a named restore point
+     * if the restore point is found, it reverts all changes made after that point.
+     *
+     * @param {string} restorePointName - The name of the restore point to revert to.
+     */
     Editor.prototype.restoreHistoryPoint = function (restorePointName) {
         const history = this.getHistory();
-        if(!history.done && !history.done.length) {
+        if (!history.done && !history.done.length) {
             return;
         }
         let canRestore = false;
-        for(let i = history.done.length -1; i>=0; i--) {
+        for (let i = history.done.length - 1; i >= 0; i--) {
             // history is a stack
             const historyEntry = history.done[i];
-            if(historyEntry.restorePointName === restorePointName) {
+            if (historyEntry.restorePointName === restorePointName) {
                 canRestore = true;
                 break;
             }
         }
-        if(!canRestore) {
+        if (!canRestore) {
             return;
         }
         const cm = this._codeMirror;
@@ -1492,24 +1566,24 @@ define(function (require, exports, module) {
         cm.operation(function () {
             let newHistory = self.getHistory(), historyLength;
             let lastHistoryItem = newHistory.done && newHistory.done.length
-                && history.done[history.done.length -1];
-            while(lastHistoryItem && lastHistoryItem.restorePointName !== restorePointName) {
+                && history.done[history.done.length - 1];
+            while (lastHistoryItem && lastHistoryItem.restorePointName !== restorePointName) {
                 newHistory = self.getHistory();
                 historyLength = newHistory.done.length;
                 cm.undoSelection();
                 newHistory = self.getHistory();
-                if(historyLength === newHistory.done.length) {
+                if (historyLength === newHistory.done.length) {
                     // undo selection didnt do anything, try undo
                     cm.undo();
                     newHistory = self.getHistory();
-                    if(historyLength === newHistory.done.length) {
+                    if (historyLength === newHistory.done.length) {
                         // we cant undo, and this will go into an infinite loop if we continue.
                         console.error("Could not undo history to restore snapshot!");
                         break;
                     }
                 }
                 lastHistoryItem = newHistory.done && newHistory.done.length
-                    && newHistory.done[newHistory.done.length -1];
+                    && newHistory.done[newHistory.done.length - 1];
             }
         });
     };
@@ -1524,10 +1598,10 @@ define(function (require, exports, module) {
      * @param {boolean} [center] true to center the viewport
      * @param {number} [centerOptions] Option value, or 0 for no options; one of the BOUNDARY_* constants above.
      * @param {?string} [origin] An optional string that describes what other selection or edit operations this
-     *      should be merged with for the purposes of undo. See {@link Document#replaceRange} for more details.
+     *      should be merged with for the purposes of undo. See {@link Document::Document#replaceRange} for more details.
      */
     Editor.prototype.setSelection = function (start, end, center, centerOptions, origin) {
-        this.setSelections([{start: start, end: end || start}], center, centerOptions, origin);
+        this.setSelections([{ start: start, end: end || start }], center, centerOptions, origin);
     };
 
     /**
@@ -1586,7 +1660,7 @@ define(function (require, exports, module) {
     Editor.prototype.replaceMultipleRanges = function (ranges, origin) {
         // Sort ranges in descending order by start position so that they dont step over each other
         let self = this;
-        self.operation(()=>{
+        self.operation(() => {
             ranges.sort((a, b) => {
                 if (a.from.line === b.from.line) {
                     return b.from.ch - a.from.ch;
@@ -1614,7 +1688,7 @@ define(function (require, exports, module) {
      * getSelection() and getCursorPos()) defaulting to the last if not specified.
      * Overlapping ranges will be automatically merged, and the selection will be sorted.
      * Optionally centers around the primary selection after making the selection.
-     * @param {!Array<{start:{line:number, ch:number}, end:{line:number, ch:number}, primary:boolean, reversed: boolean}>} selections
+     * @param {!{start:{line:number, ch:number}, end:{line:number, ch:number}, primary:boolean, reversed: boolean}} selections
      *      The selection ranges to set. If the start and end of a range are the same, treated as a cursor.
      *      If reversed is true, set the anchor of the range to the end instead of the start.
      *      If primary is true, this is the primary selection. Behavior is undefined if more than
@@ -1622,7 +1696,7 @@ define(function (require, exports, module) {
      * @param {boolean} center true to center the viewport around the primary selection.
      * @param {number} centerOptions Option value, or 0 for no options; one of the BOUNDARY_* constants above.
      * @param {?string} origin An optional string that describes what other selection or edit operations this
-     *      should be merged with for the purposes of undo. See {@link Document#replaceRange} for more details.
+     *      should be merged with for the purposes of undo. See {@link Document::Document#replaceRange} for more details.
      */
     Editor.prototype.setSelections = function (selections, center, centerOptions, origin) {
         var primIndex = selections.length - 1, options;
@@ -1659,6 +1733,12 @@ define(function (require, exports, module) {
         this.setSelection(word.anchor, word.head);
     };
 
+    /**
+     * To get the text between the starting position and the ending position
+     * @param {!{line:number, ch:number}} startPos | The starting position
+     * @param {!{line:number, ch:number}} endPos | The ending position
+     * @returns {string} The text between the starting position and the ending position
+     */
     Editor.prototype.getTextBetween = function (startPos, endPos) {
         const text = this._codeMirror.getRange(startPos, endPos);
         return text;
@@ -1704,10 +1784,10 @@ define(function (require, exports, module) {
             while (left - 1 >= 0 && (/\d|\.|-/).test(str[left - 1]) && digitCount < maxDigitsOverflow) {
                 // Make sure not to count multiple decimal points in a number
                 if (str[left - 1] === '.' && !decimalAlreadyFound) {
-                    decimalAlreadyFound =  true;
+                    decimalAlreadyFound = true;
                 } else if (str[left - 1] === '.' && decimalAlreadyFound) {
                     break;
-                }  else if (str[left - 1] === '-') {
+                } else if (str[left - 1] === '-') {
                     left--;
                     break;
                 }
@@ -1730,11 +1810,11 @@ define(function (require, exports, module) {
             // If we found a number, and it is withing the original max digit count, return the result
             if (left !== right && digitCount !== maxDigitsOverflow) {
                 const text = str.substring(left, right);
-                if(text !== "." && text !== "-"){
+                if (text !== "." && text !== "-") {
                     return {
                         text: str.substring(left, right),
-                        startPos: {line: pos.line, ch: token.start + left},
-                        endPos: {line: pos.line, ch: token.start + right}
+                        startPos: { line: pos.line, ch: token.start + left },
+                        endPos: { line: pos.line, ch: token.start + right }
                     };
                 }
             }
@@ -1757,7 +1837,7 @@ define(function (require, exports, module) {
      * @return {boolean} true if the line is fully visible, false otherwise
      */
     Editor.prototype.isLineVisible = function (line) {
-        var coords = this._codeMirror.charCoords({line: line, ch: 0}, "local"),
+        var coords = this._codeMirror.charCoords({ line: line, ch: 0 }, "local"),
             scrollInfo = this._codeMirror.getScrollInfo(),
             top = scrollInfo.top,
             bottom = scrollInfo.top + scrollInfo.clientHeight;
@@ -1782,7 +1862,9 @@ define(function (require, exports, module) {
         return (this._visibleRange ? this._visibleRange.endLine : this.lineCount() - 1);
     };
 
-    /* Hides the specified line number in the editor
+    /**
+     * Hides the specified line number in the editor
+     * @private
      * @param {!from} line to start hiding from (inclusive)
      * @param {!to} line to end hiding at (exclusive)
      * @return {TextMarker} The CodeMirror mark object that's hiding the lines
@@ -1797,9 +1879,9 @@ define(function (require, exports, module) {
         // requires us to create a 0-length marked span, which would ordinarily be cleaned up by CM
         // if clearWithEmpty is true. See https://groups.google.com/forum/#!topic/codemirror/RB8VNF8ow2w
         var value = this._codeMirror.markText(
-            {line: from, ch: 0},
-            {line: to - 1, ch: this._codeMirror.getLine(to - 1).length},
-            {collapsed: true, inclusiveLeft: true, inclusiveRight: true, clearWhenEmpty: false}
+            { line: from, ch: 0 },
+            { line: to - 1, ch: this._codeMirror.getLine(to - 1).length },
+            { collapsed: true, inclusiveLeft: true, inclusiveRight: true, clearWhenEmpty: false }
         );
 
         return value;
@@ -1834,6 +1916,7 @@ define(function (require, exports, module) {
      * Gets the lineSpace element within the editor (the container around the individual lines of code).
      * FUTURE: This is fairly CodeMirror-specific. Logic that depends on this may break if we switch
      * editors.
+     * @private
      * @return {!HTMLDivElement} The editor's lineSpace element.
      */
     Editor.prototype._getLineSpaceElement = function () {
@@ -1867,7 +1950,7 @@ define(function (require, exports, module) {
         this._codeMirror.scrollTo(x, y);
     };
 
-    /*
+    /**
      * Returns the current text height of the editor.
      * @return {number} Height of the text in pixels
      */
@@ -1914,7 +1997,7 @@ define(function (require, exports, module) {
     /**
      * Returns a list of all inline widgets currently open in this editor. Each entry contains the
      * inline's id, and the data parameter that was passed to addInlineWidget().
-     * @return {!Array.<{id:number, data:Object}>}
+     * @return {!{id:number, data:Object[]}}
      */
     Editor.prototype.getInlineWidgets = InlineWidgetHelper.getInlineWidgets;
 
@@ -1979,10 +2062,10 @@ define(function (require, exports, module) {
     };
 
     /*
-     * @typedef {scrollPos:{x:number, y:number},Array.<{start:{line:number, ch:number},end:{line:number, ch:number}}>} EditorViewState
+     * @typedef {scrollPos:{x:number, y:number},{start:{line:number, ch:number},end:{line:number, ch:number}}} EditorViewState
      */
 
-    /*
+    /**
      * returns the view state for the editor
      * @return {!EditorViewState}
      */
@@ -2128,12 +2211,12 @@ define(function (require, exports, module) {
      */
     Editor.prototype.getModeForSelection = function (selection) {
         // Check for mixed mode info
-        var self        = this,
-            sels        = selection ? [selection] : this.getSelections(),
-            primarySel  = selection || this.getSelection(),
-            outerMode   = this._codeMirror.getMode(),
-            startMode   = TokenUtils.getModeAt(this._codeMirror, primarySel.start),
-            isMixed     = (outerMode.name !== startMode.name);
+        var self = this,
+            sels = selection ? [selection] : this.getSelections(),
+            primarySel = selection || this.getSelection(),
+            outerMode = this._codeMirror.getMode(),
+            startMode = TokenUtils.getModeAt(this._codeMirror, primarySel.start),
+            isMixed = (outerMode.name !== startMode.name);
 
         if (isMixed) {
             // This is the magic code to let the code view know that we are in 'css' context
@@ -2174,7 +2257,7 @@ define(function (require, exports, module) {
 
             return startMode.name;
         }
-            // Mode does not vary: just use the editor-wide mode
+        // Mode does not vary: just use the editor-wide mode
         return this._codeMirror.getOption("mode");
 
     };
@@ -2196,7 +2279,7 @@ define(function (require, exports, module) {
     Editor.prototype.getLanguageForPosition = function (pos) {
         let self = this;
         pos = pos || self.getCursorPos();
-        return this.document.getLanguage().getLanguageForMode(self.getModeForSelection({start: pos, end: pos}));
+        return this.document.getLanguage().getLanguageForMode(self.getModeForSelection({ start: pos, end: pos }));
     };
 
     /**
@@ -2220,6 +2303,7 @@ define(function (require, exports, module) {
      * The Editor's last known width.
      * Used in conjunction with updateLayout to recompute the layout
      * if the parent container changes its size since our last layout update.
+     * @private
      * @type {?number}
      */
     Editor.prototype._lastEditorWidth = null;
@@ -2228,6 +2312,7 @@ define(function (require, exports, module) {
     /**
      * If true, we're in the middle of syncing to/from the Document. Used to ignore spurious change
      * events caused by us (vs. change events caused by others, which we need to pay attention to).
+     * @private
      * @type {!boolean}
      */
     Editor.prototype._duringSync = false;
@@ -2243,7 +2328,7 @@ define(function (require, exports, module) {
 
     /**
      * @private
-     * @type {!Array.<{id:number, data:Object}>}
+     * @type {!{id:number, data:Object[]}}
      */
     Editor.prototype._inlineWidgets = null;
 
@@ -2298,32 +2383,32 @@ define(function (require, exports, module) {
             newValue = this._getOption(prefName);
 
         const fullPath = this.document.file.fullPath;
-        if(SPACING_OPTIONS.has(prefName)){
+        if (SPACING_OPTIONS.has(prefName)) {
             const newUseAutoTabs = Editor.getAutoTabSpaces(fullPath);
-            if(newUseAutoTabs){
+            if (newUseAutoTabs) {
                 _computeTabSpaces(this);
             }
             const newUseTabCharCfg = Editor.getUseTabChar(fullPath);
             const newSpaceUnits = Editor.getSpaceUnits(fullPath);
             const newTabSize = Editor.getTabSize(fullPath);
             const newTabUnits = Editor.getAutoTabUnits(fullPath);
-            if(this._currentOptions[AUTO_TAB_SPACES] === newUseAutoTabs &&
+            if (this._currentOptions[AUTO_TAB_SPACES] === newUseAutoTabs &&
                 this._currentOptions[USE_TAB_CHAR] === newUseTabCharCfg &&
                 this._currentOptions[SPACE_UNITS] === newSpaceUnits &&
                 this._currentOptions[TAB_SIZE] === newTabSize) {
                 // no change
                 const currentIndentUnit = this._codeMirror.getOption("indentUnit");
                 let expectedIndentUnit;
-                if(newUseAutoTabs) {
+                if (newUseAutoTabs) {
                     expectedIndentUnit = newUseTabCharCfg ?
                         newTabUnits * this._currentOptions[TAB_SIZE] :
                         this._currentOptions[SPACE_UNITS];
                 } else {
                     expectedIndentUnit = newUseTabCharCfg ?
-                        this._currentOptions[TAB_SIZE]:
+                        this._currentOptions[TAB_SIZE] :
                         this._currentOptions[SPACE_UNITS];
                 }
-                if(currentIndentUnit === expectedIndentUnit) {
+                if (currentIndentUnit === expectedIndentUnit) {
                     return;
                 }
             }
@@ -2332,17 +2417,17 @@ define(function (require, exports, module) {
             this._currentOptions[SPACE_UNITS] = newSpaceUnits;
             this._currentOptions[TAB_SIZE] = newTabSize;
             this._codeMirror.setOption(cmOptions[USE_TAB_CHAR], newUseTabCharCfg);
-            if(newUseAutoTabs) {
-                if(newUseTabCharCfg){
+            if (newUseAutoTabs) {
+                if (newUseTabCharCfg) {
                     this._codeMirror.setOption(cmOptions[TAB_SIZE], this._currentOptions[TAB_SIZE]);
-                    this._codeMirror.setOption("indentUnit", newTabUnits*this._currentOptions[TAB_SIZE]);
+                    this._codeMirror.setOption("indentUnit", newTabUnits * this._currentOptions[TAB_SIZE]);
                 } else {
                     this._codeMirror.setOption(cmOptions[TAB_SIZE], this._currentOptions[TAB_SIZE]);
                     this._codeMirror.setOption("indentUnit", this._currentOptions[SPACE_UNITS]);
                 }
             } else {
                 this._codeMirror.setOption("indentUnit", newUseTabCharCfg === true ?
-                    this._currentOptions[TAB_SIZE]:
+                    this._currentOptions[TAB_SIZE] :
                     this._currentOptions[SPACE_UNITS]
                 );
                 this._codeMirror.setOption(cmOptions[TAB_SIZE], this._currentOptions[TAB_SIZE]);
@@ -2450,7 +2535,7 @@ define(function (require, exports, module) {
         // set to true, we explicitly add the line numbers gutter. This case occurs the first time the editor loads
         // and showLineNumbers is set to true in preferences
         if (gutters.indexOf(LINE_NUMBER_GUTTER) < 0 && this._codeMirror.getOption(cmOptions[SHOW_LINE_NUMBERS])) {
-            registeredGutters.push({name: LINE_NUMBER_GUTTER, priority: LINE_NUMBER_GUTTER_PRIORITY});
+            registeredGutters.push({ name: LINE_NUMBER_GUTTER, priority: LINE_NUMBER_GUTTER_PRIORITY });
         }
 
         gutters = registeredGutters.sort(_sortByPriority)
@@ -2533,7 +2618,7 @@ define(function (require, exports, module) {
 
     /**
      * Returns the list of gutters current registered on all editors.
-     * @return {!Array.<{name: string, priority: number}>}
+     * @return {!{name: string, priority: number}}
      */
     Editor.getRegisteredGutters = function () {
         return registeredGutters;
@@ -2567,7 +2652,7 @@ define(function (require, exports, module) {
             return;
         }
 
-        var gutter = {name: name, priority: priority, languages: languageIds},
+        var gutter = { name: name, priority: priority, languages: languageIds },
             gutterExists = registeredGutters.some(function (gutter) {
                 return gutter.name === name;
             });
@@ -2602,7 +2687,7 @@ define(function (require, exports, module) {
         // there are two storages for auto detected spaces for files. IF the user has explicitly set the spacing
         // through the status bar, its stored permanently. else its computed on the fly
         let cachedCfg = tabSpacesStateManager.get(key);
-        if(cachedCfg){
+        if (cachedCfg) {
             return cachedCfg;
         }
         return computedTabSpaces.get(key);
@@ -2617,16 +2702,16 @@ define(function (require, exports, module) {
      */
     Editor.setUseTabChar = function (value, fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues) {
             computedValues.useTabChar = value;
             // persist explicitly user set values to storage
             tabSpacesStateManager.set(fullPath, computedValues);
-            Editor.forEveryEditor(editor=>{
+            Editor.forEveryEditor(editor => {
                 editor._updateOption(USE_TAB_CHAR);
             }, fullPath);
             return true;
         }
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(USE_TAB_CHAR, value, options);
     };
 
@@ -2637,7 +2722,7 @@ define(function (require, exports, module) {
      */
     Editor.getUseTabChar = function (fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues) {
             return computedValues.useTabChar;
         }
         return PreferencesManager.get(USE_TAB_CHAR, _buildPreferencesContext(fullPath));
@@ -2652,18 +2737,18 @@ define(function (require, exports, module) {
      */
     Editor.setTabSize = function (value, fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
-            if(EditorPreferences.isValidTabSize(value)){
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues) {
+            if (EditorPreferences.isValidTabSize(value)) {
                 computedValues.tabSize = value;
                 // persist explicitly user set values to storage
                 tabSpacesStateManager.set(fullPath, computedValues);
-                Editor.forEveryEditor(editor=>{
+                Editor.forEveryEditor(editor => {
                     editor._updateOption(TAB_SIZE);
                 }, fullPath);
             }
             return true;
         }
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(TAB_SIZE, value, options);
     };
 
@@ -2674,7 +2759,7 @@ define(function (require, exports, module) {
      */
     Editor.getTabSize = function (fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.tabSize) {
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.tabSize) {
             return computedValues.tabSize;
         }
         return PreferencesManager.get(TAB_SIZE, _buildPreferencesContext(fullPath));
@@ -2687,7 +2772,7 @@ define(function (require, exports, module) {
      */
     Editor.getAutoTabUnits = function (fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.tabUnits) {
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.tabUnits) {
             return computedValues.tabUnits;
         }
         return EditorPreferences.MIN_SPACE_UNITS;
@@ -2696,14 +2781,14 @@ define(function (require, exports, module) {
     const MAX_LINES_TO_SCAN_FOR_INDENT = 700; // this is high to account for any js docs/ file comments
     function _computeTabSpaces(editor, scanFullFile, recompute) {
         const fullPath = editor.document.file.fullPath;
-        if(_getCachedSpaceCfg(fullPath) && !recompute) {
+        if (_getCachedSpaceCfg(fullPath) && !recompute) {
             return;
         }
         // we only scan the first 200 lines of text to determine the spaces.
-        const detectedVals = editor._detectIndent(scanFullFile? undefined : MAX_LINES_TO_SCAN_FOR_INDENT);
+        const detectedVals = editor._detectIndent(scanFullFile ? undefined : MAX_LINES_TO_SCAN_FOR_INDENT);
         const useTabChar = (detectedVals.type === "tab");
         let amount = detectedVals.amount;
-        if(!detectedVals.type || !amount){
+        if (!detectedVals.type || !amount) {
             // this happens if the util cant find out the tab/spacing config
             amount = EditorPreferences.DEFAULT_SPACE_UNITS;
         }
@@ -2716,14 +2801,14 @@ define(function (require, exports, module) {
         });
     }
     Editor._autoDetectTabSpaces = function (editor, scanFullFile, recompute) {
-        if(!editor){
+        if (!editor) {
             return;
         }
         const fullPath = editor.document.file.fullPath;
-        if(!Editor.getAutoTabSpaces(fullPath)){
+        if (!Editor.getAutoTabSpaces(fullPath)) {
             return; // auto detect is disabled
         }
-        if(_getCachedSpaceCfg(fullPath) && !recompute) {
+        if (_getCachedSpaceCfg(fullPath) && !recompute) {
             editor._updateOption(AUTO_TAB_SPACES);
             return;
         }
@@ -2739,7 +2824,7 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setAutoTabSpaces = function (value, fullPath) {
-        const options = fullPath && {context: fullPath};
+        const options = fullPath && { context: fullPath };
         return PreferencesManager.set(AUTO_TAB_SPACES, value, options);
     };
 
@@ -2761,18 +2846,18 @@ define(function (require, exports, module) {
      */
     Editor.setSpaceUnits = function (value, fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues) {
-            if(EditorPreferences.isValidSpaceUnit(value)){
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues) {
+            if (EditorPreferences.isValidSpaceUnit(value)) {
                 computedValues.spaceUnits = value;
                 // persist explicitly user set values to storage
                 tabSpacesStateManager.set(fullPath, computedValues);
-                Editor.forEveryEditor(editor=>{
+                Editor.forEveryEditor(editor => {
                     editor._updateOption(SPACE_UNITS);
                 }, fullPath);
             }
             return true;
         }
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(SPACE_UNITS, value, options);
     };
 
@@ -2783,7 +2868,7 @@ define(function (require, exports, module) {
      */
     Editor.getSpaceUnits = function (fullPath) {
         let computedValues = _getCachedSpaceCfg(fullPath);
-        if(Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.spaceUnits) {
+        if (Editor.getAutoTabSpaces(fullPath) && computedValues && computedValues.spaceUnits) {
             return computedValues.spaceUnits;
         }
         return PreferencesManager.get(SPACE_UNITS, _buildPreferencesContext(fullPath));
@@ -2797,7 +2882,7 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setCloseBrackets = function (value, fullPath) {
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(CLOSE_BRACKETS, value, options);
     };
 
@@ -2818,7 +2903,7 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setShowLineNumbers = function (value, fullPath) {
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(SHOW_LINE_NUMBERS, value, options);
     };
 
@@ -2859,7 +2944,7 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setWordWrap = function (value, fullPath) {
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(WORD_WRAP, value, options);
     };
 
@@ -2880,7 +2965,7 @@ define(function (require, exports, module) {
      * @return {boolean} true if value was valid
      */
     Editor.setIndentLineComment = function (value, fullPath) {
-        var options = fullPath && {context: fullPath};
+        var options = fullPath && { context: fullPath };
         return PreferencesManager.set(INDENT_LINE_COMMENT, value, options);
     };
 
@@ -2901,9 +2986,9 @@ define(function (require, exports, module) {
      */
     Editor.forEveryEditor = function (callback, fullPath) {
         _instances.forEach(function (editor) {
-            if(!fullPath) {
+            if (!fullPath) {
                 callback(editor);
-            } else if(editor.document.file.fullPath === fullPath) {
+            } else if (editor.document.file.fullPath === fullPath) {
                 callback(editor);
             }
         });
@@ -2935,6 +3020,7 @@ define(function (require, exports, module) {
     Editor.CODE_FOLDING_GUTTER_PRIORITY = CODE_FOLDING_GUTTER_PRIORITY;
 
     /**
+     * @private
      * Each Editor instance object dispatches the following events:
      *    - keydown, keypress, keyup -- When any key event happens in the editor (whether it changes the
      *      text or not). Handlers are passed `(BracketsEvent, Editor, KeyboardEvent)`. The 3nd arg is the
@@ -2989,8 +3075,8 @@ define(function (require, exports, module) {
     });
 
     // Define public API
-    exports.Editor                  = Editor;
-    exports.BOUNDARY_CHECK_NORMAL   = BOUNDARY_CHECK_NORMAL;
-    exports.BOUNDARY_IGNORE_TOP     = BOUNDARY_IGNORE_TOP;
-    exports.BOUNDARY_BULLSEYE      = BOUNDARY_BULLSEYE;
+    exports.Editor = Editor;
+    exports.BOUNDARY_CHECK_NORMAL = BOUNDARY_CHECK_NORMAL;
+    exports.BOUNDARY_IGNORE_TOP = BOUNDARY_IGNORE_TOP;
+    exports.BOUNDARY_BULLSEYE = BOUNDARY_BULLSEYE;
 });

@@ -34,6 +34,7 @@
  * For Making this possible, the `angular-cli` extension makes a named interface available with the ExtensionInterface
  * module and `angular` extension can get hold of the interface as and when the extension gets loaded.
  *
+ * @example
  * ```js
  * // in angular-cli extension, make a file say cli-interface.js module within the extension, do the following:
  * const ExtensionInterface = brackets.getModule("utils/ExtensionInterface"),
@@ -43,14 +44,13 @@
  * Once the interface is registered, the angular extension can get hold of the interface with the following code
  * (inside or outside the extension) by using:
  *
+ * @example
  * ```js
  * let angularCli;
  * ExtensionInterface.waitAndGetExtensionInterface("angularCli").then(interfaceObj=> angularCli = interfaceObj);
- * ...
  * if(angularCli){ // check if angular cli is avilable
  * angularCli.callSomeFunction();
  * }
- * ...
  * ```
  *
  * **Note** that the `angularCli` interface is async populated as and when the cli extension is loaded and the
@@ -62,9 +62,20 @@
  */
 
 define(function (require, exports, module) {
+
+    /**
+     * Extension interface registered event
+     *
+     * @const
+     * @type {string}
+     */
     const EVENT_EXTENSION_INTERFACE_REGISTERED = "extensionInterfaceRegistered";
 
-    /* standard named interfaces registered by default extensions*/
+    /**
+     * standard named interfaces registered by default extensions
+     *
+     * @private
+     */
     const _DEFAULT_EXTENSIONS_INTERFACE_NAMES = {
         PHOENIX_LIVE_PREVIEW: "Extn.Phoenix.livePreview"
     };
@@ -76,7 +87,7 @@ define(function (require, exports, module) {
     /**
      * Registers a named extension interface. Will overwrite if an interface of the same name is already present.
      *
-     * @example <caption>To register an interface `angularCli`</caption>
+     * To register an interface `angularCli`
      * ExtensionInterface.registerExtensionInterface("angularCli", exports);
      *
      * @param {string} extensionInterfaceName
@@ -90,6 +101,7 @@ define(function (require, exports, module) {
 
     /**
      * Returns true is an interface of the given name exists.
+     *
      * @param {string} extensionInterfaceName
      * @return {boolean}
      * @type {function}
@@ -102,14 +114,14 @@ define(function (require, exports, module) {
      * Returns a promise that gets resolved only when an ExtensionInterface of the given name is registered. Use this
      * getter to get hold of extensions interface predictably.
      *
-     * @example <caption>To get a registered interface `angularCli`</caption>
+     * To get a registered interface `angularCli`
+     * ```js
      * let angularCli;
      * ExtensionInterface.waitAndGetExtensionInterface("angularCli").then(interfaceObj=> angularCli = interfaceObj);
-     * ...
      * if(angularCli){ // check if angular cli is avilable
      * angularCli.callSomeFunction();
      * }
-     * ...
+     * ```
      *
      * @param extensionInterfaceName
      * @return {Promise}

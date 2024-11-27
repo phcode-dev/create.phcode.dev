@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /*
  * __CodeHintManager Overview:__
  *
@@ -265,6 +267,7 @@ define(function (require, exports, module) {
 
     /**
      * Comparator to sort providers from high to low priority
+     * @private
      */
     function _providerSort(a, b) {
         return b.priority - a.priority;
@@ -349,9 +352,9 @@ define(function (require, exports, module) {
     /**
      *  Return the array of hint providers for the given language id.
      *  This gets called (potentially) on every keypress. So, it should be fast.
-     *
+     * @private
      * @param {!string} languageId
-     * @return {?Array.<{provider: Object, priority: number}>}
+     * @return {?{provider: Object, priority: number[]}}
      */
     function _getProvidersForLanguageId(languageId) {
         var providers = hintProviders[languageId] || hintProviders.all;
@@ -368,6 +371,7 @@ define(function (require, exports, module) {
     var _beginSession;
 
     /**
+     * @private
      * End the current hinting session
      */
     function _endSession() {
@@ -391,7 +395,7 @@ define(function (require, exports, module) {
      *
      * NOTE: the sessionEditor, sessionProvider and hintList objects are
      * only guaranteed to be initialized during an active session.
-     *
+     * @private
      * @param {Editor} editor
      * @return boolean
      */
@@ -413,6 +417,7 @@ define(function (require, exports, module) {
      * render the hint list window.
      *
      * Assumes that it is called when a session is active (i.e. sessionProvider is not null).
+     * @private
      */
     function _updateHintList(callMoveUpEvent) {
 
@@ -471,6 +476,7 @@ define(function (require, exports, module) {
 
     /**
      * Try to begin a new hinting session.
+     * @private
      * @param {Editor} editor
      */
     _beginSession = function (editor) {
@@ -551,7 +557,7 @@ define(function (require, exports, module) {
      * what changed so that we could do all of this logic without looking at
      * key events. Then, the purposes of handleKeyEvent and handleChange could be
      * combined. Doing this well requires changing CodeMirror.
-     *
+     * @private
      * @param {Event} jqEvent
      * @param {Editor} editor
      * @param {KeyboardEvent} event
@@ -598,6 +604,7 @@ define(function (require, exports, module) {
     /**
      * Handle a selection change event in the editor. If the selection becomes a
      * multiple selection, end our current session.
+     * @private
      * @param {BracketsEvent} event
      * @param {Editor} editor
      */
@@ -613,7 +620,7 @@ define(function (require, exports, module) {
      * Start a new implicit hinting session, or update the existing hint list.
      * Called by the editor after handleKeyEvent, which is responsible for setting
      * the lastChar.
-     *
+     * @private
      * @param {Event} event
      * @param {Editor} editor
      * @param {{from: Pos, to: Pos, text: Array, origin: string}} changeList
@@ -667,7 +674,7 @@ define(function (require, exports, module) {
     }
 
     /**
-     *  Test if a hint popup is open.
+     * Test if a hint popup is open.
      *
      * @return {boolean} - true if the hints are open, false otherwise.
      */
@@ -678,6 +685,7 @@ define(function (require, exports, module) {
     /**
      * Explicitly start a new session. If we have an existing session,
      * then close the current one and restart a new one.
+     * @private
      * @param {Editor} editor
      */
     function _startNewSession(editor) {
@@ -703,6 +711,7 @@ define(function (require, exports, module) {
 
     /**
      * Expose CodeHintList for unit testing
+     * @private
      */
     function _getCodeHintList() {
         return hintList;

@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /**
 
     This class parses configuration values from a JSON object. The expected
@@ -68,7 +70,7 @@ define(function (require, exports, module) {
     /**
      *  Convert an array of strings with optional wildcards, to an equivalent
      *  regular expression.
-     *
+     * @private
      * @param {Array.<string|RegExp>} settings from the file (note: this may be mutated by this function)
      * @param {?RegExp} baseRegExp - base regular expression that is always used
      * @param {?RegExp} defaultRegExp - additional regular expression that is only used if the user has not configured settings

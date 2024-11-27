@@ -31,6 +31,8 @@ define(function (require, exports, module) {
         ViewCommandHandlers = require("view/ViewCommandHandlers"),
         settingsTemplate    = require("text!htmlContent/themes-settings.html"),
         PreferencesManager  = require("preferences/PreferencesManager"),
+        CommandManager      = require("command/CommandManager"),
+        Commands            = require("command/Commands"),
         prefs               = PreferencesManager.getExtensionPrefs("themes");
 
     /**
@@ -48,7 +50,8 @@ define(function (require, exports, module) {
         themeScrollbars: true,
         theme: SYSTEM_DEFAULT_THEME,
         lightTheme: "light-theme",
-        darkTheme: "dark-theme"
+        darkTheme: "dark-theme",
+        editorLineHeight: 1.5
     };
 
 
@@ -131,6 +134,12 @@ define(function (require, exports, module) {
                 var targetValue = $(this).val();
                 newSettings["fontFamily"] = targetValue;
             })
+            .on("input", ".fontLineHeightSlider", function () {
+                const targetValue = $(this).val();
+                $template.find(".fontLineHeightValue").text(targetValue);
+                newSettings["editorLineHeight"] = targetValue;
+                prefs.set("editorLineHeight", targetValue + "");
+            })
             .on("change", "select", function () {
                 var $target = $(":selected", this);
                 var attr = $target.attr("data-target");
@@ -140,7 +149,8 @@ define(function (require, exports, module) {
                 }
             });
 
-        Dialogs.showModalDialogUsingTemplate($template).done(function (id) {
+        const dialog = Dialogs.showModalDialogUsingTemplate($template);
+        dialog.done(function (id) {
             var setterFn;
 
             if (id === "save") {
@@ -160,8 +170,17 @@ define(function (require, exports, module) {
             } else if (id === "cancel") {
                 // Make sure we revert any changes to theme selection
                 prefs.set("theme", currentSettings.theme);
+                prefs.set("editorLineHeight", currentSettings.editorLineHeight);
             }
         });
+        $template
+            .find(".get-more-themes")
+            .click(function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                dialog.close();
+                CommandManager.execute(Commands.FILE_EXTENSION_MANAGER, "themes");
+            });
     }
 
     /**
@@ -185,6 +204,15 @@ define(function (require, exports, module) {
     });
     prefs.definePreference("themeScrollbars", "boolean", DEFAULTS.themeScrollbars, {
         description: Strings.DESCRIPTION_USE_THEME_SCROLLBARS
+    });
+    prefs.definePreference("editorLineHeight", "number", DEFAULTS.editorLineHeight, {
+        description: Strings.DESCRIPTION_EDITOR_LINE_HEIGHT
+    });
+
+    prefs.on("change", "editorLineHeight", function () {
+        const lineHeight = prefs.get("editorLineHeight") + "";
+        const $phoenixMain = $('#Phoenix-Main');
+        $phoenixMain[0].style.setProperty('--editor-line-height', lineHeight);
     });
 
     exports.DEFAULTS   = DEFAULTS;

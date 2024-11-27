@@ -35,36 +35,42 @@ define(function (require, exports, module) {
     /**
      * Editor the markers are currently shown for, or null if not shown
      * @type {?Editor}
+     * @private
      */
     var editor;
 
     /**
      * Top of scrollbar track area, relative to top of scrollbar
      * @type {number}
+     * @private
      */
     var trackOffset;
 
     /**
      * Height of scrollbar track area
      * @type {number}
+     * @private
      */
     var trackHt;
 
     /**
      * Text positions of markers
-     * @type {!Array.<{line: number, ch: number}>}
+     * @type {!{line: number, ch: number}} Array
+     * @private
      */
     var marks = [];
 
     /**
      * Tickmark markCurrent() last called on, or null if never called / called with -1.
      * @type {?jQueryObject}
+     * @private
      */
     var $markedTickmark;
 
     /**
      * Vertical space above and below the scrollbar
      * @type {number}
+     * @private
      */
     var scrollbarTrackOffset;
 
@@ -103,7 +109,10 @@ define(function (require, exports, module) {
         return $(editor.getRootElement()).children(".CodeMirror-vscrollbar");
     }
 
-    /** Measure scrollbar track */
+    /**
+     * Measure scrollbar track
+     * @private
+     */
     function _calcScaling() {
         var $sb = _getScrollbar(editor);
 
@@ -120,7 +129,10 @@ define(function (require, exports, module) {
         }
     }
 
-    /** Add all the given tickmarks to the DOM in a batch */
+    /**
+     * Add all the given tickmarks to the DOM in a batch
+     * @private
+     */
     function _renderMarks(posArray) {
         var html = "",
             cm = editor._codeMirror,
@@ -167,7 +179,9 @@ define(function (require, exports, module) {
         }
     }
 
-    /** Add or remove the tickmark track from the editor's UI */
+    /**
+     * Add or remove the tickmark track from the editor's UI
+     */
     function setVisible(curEditor, visible) {
         // short-circuit no-ops
         if ((visible && curEditor === editor) || (!visible && !editor)) {
@@ -209,8 +223,8 @@ define(function (require, exports, module) {
 
     /**
      * Add tickmarks to the editor's tickmark track, if it's visible
-     * @param curEditor {!Editor}
-     * @param posArray {!Array.<{line:Number, ch:Number}>}
+     * @param {!Editor} curEditor
+     * @param {!{line:Number, ch:Number}} posArray
      */
     function addTickmarks(curEditor, posArray) {
         console.assert(editor === curEditor);
@@ -219,7 +233,9 @@ define(function (require, exports, module) {
         _renderMarks(posArray);
     }
 
-    /** @param {number} index Either -1, or an index into the array passed to addTickmarks() */
+    /**
+     * @param {number} index Either -1, or an index into the array passed to addTickmarks()
+     */
     function markCurrent(index) {
         // Remove previous highlight first
         if ($markedTickmark) {

@@ -21,6 +21,9 @@
 
 /*global Phoenix*/
 
+// @INCLUDE_IN_API_DOCS
+
+
 /**
  * FileSystem is a model object representing a complete file system. This object creates
  * and manages File and Directory instances, dispatches events when the file system changes,
@@ -89,15 +92,15 @@
 define(function (require, exports, module) {
 
 
-    const Directory       = require("filesystem/Directory"),
-        File            = require("filesystem/File"),
-        FileIndex       = require("filesystem/FileIndex"),
+    const Directory = require("filesystem/Directory"),
+        File = require("filesystem/File"),
+        FileIndex = require("filesystem/FileIndex"),
         FileSystemError = require("filesystem/FileSystemError"),
-        RemoteFile      = require("filesystem/RemoteFile"),
-        WatchedRoot     = require("filesystem/WatchedRoot"),
+        RemoteFile = require("filesystem/RemoteFile"),
+        WatchedRoot = require("filesystem/WatchedRoot"),
         EventDispatcher = require("utils/EventDispatcher"),
-        PathUtils       = require("thirdparty/path-utils/path-utils"),
-        _               = require("thirdparty/lodash");
+        PathUtils = require("thirdparty/path-utils/path-utils"),
+        _ = require("thirdparty/lodash");
 
 
     // Collection of registered protocol adapters
@@ -134,6 +137,7 @@ define(function (require, exports, module) {
     }
 
     /**
+     * @private
      * @param {string} protocol ex: "https:"|"http:"|"ftp:"|"file:"
      * @param {string} filePath fullPath of the file
      * @return adapter adapter wrapper over file implementation
@@ -156,6 +160,7 @@ define(function (require, exports, module) {
 
     /**
      * The FileSystem is not usable until init() signals its callback.
+     * @private
      * @constructor
      */
     function FileSystem() {
@@ -176,11 +181,13 @@ define(function (require, exports, module) {
     /**
      * The low-level file system implementation used by this object.
      * This is set in the init() function and cannot be changed.
+     * @private
      */
     FileSystem.prototype._impl = null;
 
     /**
      * The FileIndex used by this object. This is initialized in the constructor.
+     * @private
      */
     FileSystem.prototype._index = null;
 
@@ -190,6 +197,7 @@ define(function (require, exports, module) {
      * until after index fixups, operation-specific callbacks, and internal change
      * events are complete. (This is important for distinguishing rename from
      * an unrelated delete-add pair).
+     * @private
      * @type {number}
      */
     FileSystem.prototype._activeChangeCount = 0;
@@ -202,11 +210,15 @@ define(function (require, exports, module) {
     /**
      * Queue of arguments with which to invoke _handleExternalChanges(); triggered
      * once _activeChangeCount drops to zero.
-     * @type {!Array.<{path:?string, stat:FileSystemStats=}>}
+     * @private
+     * @type {!{path:?string, stat:FileSystemStats}}
      */
     FileSystem.prototype._externalChanges = null;
 
-    /** Process all queued watcher results, by calling _handleExternalChange() on each */
+    /**
+     * Process all queued watcher results, by calling _handleExternalChange() on each
+     * @private
+     */
     FileSystem.prototype._triggerExternalChangesNow = function () {
         this._externalChanges.forEach(function (info) {
             this._handleExternalChange(info.path, info.stat);
@@ -218,11 +230,12 @@ define(function (require, exports, module) {
      * Receives a result from the impl's watcher callback, and either processes it
      * immediately (if _activeChangeCount is 0) or otherwise stores it for later
      * processing.
+     * @private
      * @param {?string} path The fullPath of the changed entry
      * @param {FileSystemStats=} stat An optional stat object for the changed entry
      */
     FileSystem.prototype._enqueueExternalChange = function (path, stat) {
-        this._externalChanges.push({path: path, stat: stat});
+        this._externalChanges.push({ path: path, stat: stat });
         if (!this._activeChangeCount) {
             this._triggerExternalChangesNow();
         }
@@ -231,12 +244,14 @@ define(function (require, exports, module) {
 
     /**
      * The queue of pending watch/unwatch requests.
-     * @type {Array.<{fn: function(), cb: function()}>}
+     * @private
+     * @type {{fn: function(), cb: function()}} Array
      */
     FileSystem.prototype._watchRequests = null;
 
     /**
      * Dequeue and process all pending watch/unwatch requests
+     * @private
      */
     FileSystem.prototype._dequeueWatchRequest = function () {
         if (this._watchRequests.length > 0) {
@@ -258,14 +273,14 @@ define(function (require, exports, module) {
 
     /**
      * Enqueue a new watch/unwatch request.
-     *
+     * @private
      * @param {function()} fn - The watch/unwatch request function.
      * @param {callback()} cb - The callback for the provided watch/unwatch
      *      request function.
      */
     FileSystem.prototype._enqueueWatchRequest = function (fn, cb) {
         // Enqueue the given watch/unwatch request
-        this._watchRequests.push({fn: fn, cb: cb});
+        this._watchRequests.push({ fn: fn, cb: cb });
 
         // Begin processing the queue if it is not already being processed
         if (this._watchRequests.length === 1) {
@@ -277,19 +292,20 @@ define(function (require, exports, module) {
      * The set of watched roots, encoded as a mapping from full paths to WatchedRoot
      * objects which contain a file entry, filter function, and an indication of
      * whether the watched root is inactive, starting up or fully active.
-     *
+     * @private
      * @type {Object.<string, WatchedRoot>}
      */
     FileSystem.prototype._watchedRoots = null;
 
     /**
-     * Finds a parent watched root for a given path, or returns null if a parent
-     * watched root does not exist.
-     *
-     * @param {string} fullPath The child path for which a parent watched root is to be found
-     * @return {?{entry: FileSystemEntry, filter: function(string) boolean}} The parent
-     *      watched root, if it exists, or null.
-     */
+    * Finds a parent watched root for a given path, or returns null if a parent
+    * watched root does not exist.
+    * @private
+    * @param {string} fullPath The child path for which a parent watched root is to be found.
+    * @return {?{entry: FileSystemEntry, filter: function(string): boolean}} The parent
+    *      watched root, if it exists, or null.
+    */
+
     FileSystem.prototype._findWatchedRootForPath = function (fullPath) {
         var watchedRoot = null;
 
@@ -419,6 +435,7 @@ define(function (require, exports, module) {
      *
      * All operations that mutate the file system MUST begin with a call to
      * _beginChange and must end with a call to _endChange.
+     * @private
      */
     FileSystem.prototype._beginChange = function () {
         this._activeChangeCount++;
@@ -428,6 +445,7 @@ define(function (require, exports, module) {
     /**
      * Indicates that a filesystem-mutating operation has completed. See
      * FileSystem._beginChange above.
+     * @private
      */
     FileSystem.prototype._endChange = function () {
         this._activeChangeCount--;
@@ -461,6 +479,7 @@ define(function (require, exports, module) {
     /**
      * Returns a canonical version of the path: no duplicated "/"es, no ".."s,
      * and directories guaranteed to end in a trailing "/"
+     * @private
      * @param {!string} path  Absolute path, using "/" as path separator
      * @param {boolean=} isDirectory
      * @return {!string}
@@ -555,7 +574,7 @@ define(function (require, exports, module) {
      */
     FileSystem.prototype.getFileForPath = function (path) {
         let virtualServingPath = Phoenix.VFS.getPathForVirtualServingURL(path);
-        if(virtualServingPath) {
+        if (virtualServingPath) {
             // this is so that extensions that load from an http path can figure out the actual file system path
             // from just the virtual serving URL.
             // FileSystem.getDirectoryForPath(ExtensionUtils.getModulePath(module, "some FolderInModule/"))
@@ -573,7 +592,7 @@ define(function (require, exports, module) {
 
     function _getNewPath(suggestedPath, isDir, i, pathLib) {
         suggestedPath = pathLib.normalize(suggestedPath);
-        if(isDir){
+        if (isDir) {
             return `${suggestedPath} (copy ${i})`;
         } else {
             const dir = pathLib.dirname(suggestedPath),
@@ -604,7 +623,7 @@ define(function (require, exports, module) {
                 return;
             }
             let target;
-            if(stat.isFile){
+            if (stat.isFile) {
                 let parentDir = window.path.dirname(stat.realPath);
                 target = self.getDirectoryForPath(parentDir);
             } else {
@@ -643,10 +662,10 @@ define(function (require, exports, module) {
             if (stat) {
                 // find a suggested path
                 let isDir = stat.isDirectory;
-                for(let i = 1; i < MAX_DEDUPE_NUMBER; i++) {
+                for (let i = 1; i < MAX_DEDUPE_NUMBER; i++) {
                     let newPath = _getNewPath(suggestedPath, isDir, i, self._impl.pathLib);
                     let exists = await self._impl.existsAsync(newPath);
-                    if(!exists){
+                    if (!exists) {
                         callback(null, newPath);
                         return;
                     }
@@ -670,7 +689,7 @@ define(function (require, exports, module) {
      */
     FileSystem.prototype.getDirectoryForPath = function (path) {
         let virtualServingPath = Phoenix.VFS.getPathForVirtualServingURL(path);
-        if(virtualServingPath) {
+        if (virtualServingPath) {
             // this is so that extensions that load from an http path can figure out the actual file system path
             // from just the virtual serving URL.
             // FileSystem.getDirectoryForPath(ExtensionUtils.getModulePath(module, "some FolderInModule/"))
@@ -742,13 +761,13 @@ define(function (require, exports, module) {
     /**
      * promisified version of FileSystem.resolve
      * @param {String} path to resolve
-     * @returns {Promise<{entry, stat}>}
+     * @returns {{'entry', 'stat'}}
      */
     FileSystem.prototype.resolveAsync = function (path) {
         let self = this;
-        return new Promise((resolve, reject)=>{
-            self.resolve(path, (err, item, stat)=>{
-                if(err){
+        return new Promise((resolve, reject) => {
+            self.resolve(path, (err, item, stat) => {
+                if (err) {
                     reject(err);
                     return;
                 }
@@ -779,11 +798,11 @@ define(function (require, exports, module) {
      *                          be empty.
      */
     FileSystem.prototype.showOpenDialog = function (allowMultipleSelection,
-                            chooseDirectories,
-                            title,
-                            initialPath,
-                            fileTypes,
-                            callback) {
+        chooseDirectories,
+        title,
+        initialPath,
+        fileTypes,
+        callback) {
 
         this._impl.showOpenDialog(allowMultipleSelection, chooseDirectories, title, initialPath, fileTypes, callback);
     };
@@ -807,7 +826,7 @@ define(function (require, exports, module) {
 
     /**
      * Fire a rename event. Clients listen for these events using FileSystem.on.
-     *
+     * @private
      * @param {string} oldPath The entry's previous fullPath
      * @param {string} newPath The entry's current fullPath
      */
@@ -817,7 +836,7 @@ define(function (require, exports, module) {
 
     /**
      * Fire a change event. Clients listen for these events using FileSystem.on.
-     *
+     * @private
      * @param {File|Directory} entry The entry that has changed
      * @param {Array<File|Directory>=} added If the entry is a directory, this
      *      is a set of new entries in the directory.
@@ -847,7 +866,7 @@ define(function (require, exports, module) {
      * removed entries. Mutating FileSystemEntry operations should call this method before
      * applying the operation's callback, and pass along the resulting change sets in the
      * internal change event.
-     *
+     * @private
      * @param {Directory} directory The directory that has changed.
      * @param {function(Array<File|Directory>=, Array<File|Directory>=)} callback
      *      The callback that will be applied to a set of added and a set of removed
@@ -965,22 +984,23 @@ define(function (require, exports, module) {
     /**
      * Recursively gets all files and directories given a root path. It filters out all files
      * that are not shown in the file tree by default, unless the filterNothing option is specified.
-     * @param {Directory} directory To get all descendant contents from
-     * @param {boolean} filterNothing - if specified, will return every thing, including system locations like `.git`
-     *    Use this option to take full backups, or entire disc read workflows.
-     * @return {Promise<Array[File|Directory]>} A promise that resolves with the file and directory contents
+     *
+     * @param {Directory} directory The root directory to get all descendant contents from.
+     * @param {boolean} [filterNothing=false] If true, returns everything, including system locations like `.git`.
+     *     Use this option for full backups or entire disk read workflows.
+     * @return {Promise<Array<(File|Directory)>>} A promise that resolves with an array of file and directory contents.
      */
     FileSystem.prototype.getAllDirectoryContents = function (directory, filterNothing = false) {
-        return new Promise((resolve, reject)=>{
+        return new Promise((resolve, reject) => {
             let contents = [];
             function visitor(entry) {
-                if(directory.fullPath !== entry.fullPath){
+                if (directory.fullPath !== entry.fullPath) {
                     contents.push(entry);
                 }
                 return true;
             }
-            directory.visit(visitor, {visitHiddenTree: filterNothing}, (err)=>{
-                if(err){
+            directory.visit(visitor, { visitHiddenTree: filterNothing }, (err) => {
+                if (err) {
                     reject(err);
                     return;
                 }
@@ -1020,12 +1040,12 @@ define(function (require, exports, module) {
 
         var fullPath = entry.fullPath;
 
-        callback = callback || function () {};
+        callback = callback || function () { };
 
         var watchingParentRoot = this._findWatchedRootForPath(fullPath);
         if (watchingParentRoot &&
-                (watchingParentRoot.status === WatchedRoot.STARTING ||
-                 watchingParentRoot.status === WatchedRoot.ACTIVE)) {
+            (watchingParentRoot.status === WatchedRoot.STARTING ||
+                watchingParentRoot.status === WatchedRoot.ACTIVE)) {
             callback("A parent of this root is already watched");
             return;
         }
@@ -1038,8 +1058,8 @@ define(function (require, exports, module) {
         }, this);
 
         if (watchingChildRoot &&
-                (watchingChildRoot.status === WatchedRoot.STARTING ||
-                 watchingChildRoot.status === WatchedRoot.ACTIVE)) {
+            (watchingChildRoot.status === WatchedRoot.STARTING ||
+                watchingChildRoot.status === WatchedRoot.ACTIVE)) {
             callback("A child of this root is already watched");
             return;
         }
@@ -1079,7 +1099,7 @@ define(function (require, exports, module) {
         var fullPath = entry.fullPath,
             watchedRoot = this._watchedRoots[fullPath];
 
-        callback = callback || function () {};
+        callback = callback || function () { };
 
         if (!watchedRoot) {
             callback(FileSystemError.ROOT_NOT_WATCHED);

@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /**
  * A "modal bar" component. This is a lightweight replacement for modal dialogs that
  * appears at the top of the editor area for operations like Find and Quick Open.
@@ -102,11 +104,13 @@ define(function (require, exports, module) {
 
     /**
      * A jQuery object containing the root node of the ModalBar.
+     * @private
      */
     ModalBar.prototype._$root = null;
 
     /**
      * True if this ModalBar is set to autoclose.
+     * @private
      */
     ModalBar.prototype._autoClose = false;
 
@@ -224,6 +228,7 @@ define(function (require, exports, module) {
 
     /**
      * If autoClose is set, close the bar when Escape is pressed
+     * @private
      */
     ModalBar.prototype._handleKeydown = function (e) {
         if (e.keyCode === KeyEvent.DOM_VK_ESCAPE) {
@@ -237,6 +242,7 @@ define(function (require, exports, module) {
      * If autoClose is set, detects when something other than the modal bar is getting focus and
      * dismisses the modal bar. DOM nodes with "attached-to" jQuery metadata referencing an element
      * within the ModalBar are allowed to take focus without closing it.
+     * @private
      */
     ModalBar.prototype._handleFocusChange = function (e) {
         if (this.isLockedOpen && this.isLockedOpen()) {

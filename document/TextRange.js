@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /**
  */
 define(function (require, exports, module) {
@@ -99,6 +101,7 @@ define(function (require, exports, module) {
     /**
      * Applies a single Document change object (out of the linked list of multiple such objects)
      * to this range.
+     * @private
      * @param {Object} change The CodeMirror change record.
      * @return {{hasChanged: boolean, hasContentChanged: boolean}} Whether the range boundary
      *     and/or content has changed.
@@ -168,6 +171,7 @@ define(function (require, exports, module) {
      * Updates the range based on the changeList from a Document "change" event. Dispatches a
      * "change" event if the range was adjusted at all. Dispatches a "lostSync" event instead if the
      * range can no longer be accurately maintained.
+     * @private
      */
     TextRange.prototype._applyChangesToRange = function (changeList) {
         var hasChanged = false, hasContentChanged = false;

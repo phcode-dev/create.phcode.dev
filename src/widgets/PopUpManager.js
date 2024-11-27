@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /**
  * Utilities for managing pop-ups.
  */
@@ -88,7 +90,7 @@ define(function (require, exports, module) {
     /**
      * Remove Esc key handling for a pop-up. Removes the pop-up from the DOM
      * if the pop-up is currently visible and was not originally attached.
-     *
+     * @private
      * @param {KeyboardEvent=} keyEvent (optional)
      */
     function removeCurrentPopUp(keyEvent) {
@@ -142,6 +144,7 @@ define(function (require, exports, module) {
 
     /**
      * A menu is being popped up, so remove any menu that is currently popped up
+     * @private
      */
     function _beforeMenuPopup() {
         removeCurrentPopUp();

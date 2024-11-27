@@ -19,6 +19,8 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 /*unittests: QuickOpen*/
 
 /*
@@ -30,25 +32,29 @@
 define(function (require, exports, module) {
 
 
-    var DocumentManager     = require("document/DocumentManager"),
-        EditorManager       = require("editor/EditorManager"),
-        MainViewManager     = require("view/MainViewManager"),
-        MainViewFactory     = require("view/MainViewFactory"),
-        CommandManager      = require("command/CommandManager"),
-        Strings             = require("strings"),
-        StringUtils         = require("utils/StringUtils"),
-        Commands            = require("command/Commands"),
-        ProjectManager      = require("project/ProjectManager"),
-        LanguageManager     = require("language/LanguageManager"),
-        FileSystemError     = require("filesystem/FileSystemError"),
-        ModalBar            = require("widgets/ModalBar").ModalBar,
-        QuickSearchField    = require("search/QuickSearchField").QuickSearchField,
-        StringMatch         = require("utils/StringMatch"),
+    var DocumentManager = require("document/DocumentManager"),
+        EditorManager = require("editor/EditorManager"),
+        MainViewManager = require("view/MainViewManager"),
+        MainViewFactory = require("view/MainViewFactory"),
+        CommandManager = require("command/CommandManager"),
+        Strings = require("strings"),
+        StringUtils = require("utils/StringUtils"),
+        Commands = require("command/Commands"),
+        ProjectManager = require("project/ProjectManager"),
+        LanguageManager = require("language/LanguageManager"),
+        FileSystemError = require("filesystem/FileSystemError"),
+        ModalBar = require("widgets/ModalBar").ModalBar,
+        QuickSearchField = require("search/QuickSearchField").QuickSearchField,
+        StringMatch = require("utils/StringMatch"),
         ProviderRegistrationHandler = require("features/PriorityBasedRegistration").RegistrationHandler;
 
     var _providerRegistrationHandler = new ProviderRegistrationHandler(),
         _registerQuickOpenProvider = _providerRegistrationHandler.registerProvider.bind(_providerRegistrationHandler);
 
+    /**
+     * Represents the symbol kind
+     * @type {Object}
+     */
     var SymbolKind = {
         "1": "File",
         "2": "Module",
@@ -80,25 +86,34 @@ define(function (require, exports, module) {
 
     /**
      * The regular expression to check the cursor position
+     * @private
      * @const {RegExp}
      */
     var CURSOR_POS_EXP = new RegExp(":([^,]+)?(,(.+)?)?");
 
     /**
      * Current plugin
+     * @private
      * @type {QuickOpenPlugin}
      */
     var currentPlugin = null;
 
-    /** @type {Array.<File>} */
+    /**
+     *  @type {Array.<File>}
+     *  @private
+     */
     var fileList;
 
-    /** @type {$.Promise} */
+    /**
+     * @type {$.Promise}
+     * @private
+     */
     var fileListPromise;
 
     /**
      * The currently open (or last open) QuickNavigateDialog
      * @type {?QuickNavigateDialog}
+     * @private
      */
     var _curDialog;
 
@@ -137,54 +152,41 @@ define(function (require, exports, module) {
     /**
      * Creates and registers a new QuickOpenPlugin
      *
-     * @param { name: string,
-     *          languageIds: !Array.<string>,
-     *          done: ?function(),
-     *          search: function(string, !StringMatch.StringMatcher):(!Array.<SearchResult|string>|$.Promise),
-     *          match: function(string):boolean,
-     *          itemFocus: ?function(?SearchResult|string, string, boolean),
-     *          itemSelect: function(?SearchResult|string, string),
-     *          resultsFormatter: ?function(SearchResult|string, string):string,
-     *          matcherOptions: ?Object,
-     *          label: ?string
-     *        } pluginDef
-     *
-     * Parameter Documentation:
-     *
-     * name - plug-in name, **must be unique**
-     * languageIds - language Ids array. Example: ["javascript", "css", "html"]. To allow any language, pass []. Required.
-     * done - called when quick open is complete. Plug-in should clear its internal state. Optional.
-     * search - takes a query string and a StringMatcher (the use of which is optional but can speed up your searches) and returns
+     * @param {Object} pluginDef - Plugin definition object containing the following properties:
+     *   \{string} name - Plug-in name, **must be unique**.
+     *   \{Array(string)} languageIds - Language Ids array. Example: ["javascript", "css", "html"]. To allow any language, pass []. Required.
+     *   \{function()} [done] - Called when quick open is complete. Plug-in should clear its internal state. Optional.
+     *   \{function(string, StringMatch.StringMatcher): (Array(SearchResult|string)|$.Promise)} search - Takes a query string and a StringMatcher (the use of which is optional but can speed up your searches) and returns
      *      an array of strings or result objects that match the query; or a Promise that resolves to such an array. Required.
-     * match - takes a query string and returns true if this plug-in wants to provide
+     *   \{function(string): boolean} match - Takes a query string and returns true if this plug-in wants to provide
      *      results for this query. Required.
-     * itemFocus - performs an action when a result has been highlighted (via arrow keys, or by becoming top of the list).
+     *   \{function(?SearchResult|string, string, boolean)} [itemFocus] - Performs an action when a result has been highlighted (via arrow keys, or by becoming top of the list).
      *      Passed the highlighted search result item (as returned by search()), the current query string, and a flag that is true
      *      if the item was highlighted explicitly (arrow keys), not implicitly (at top of list after last search()). Optional.
-     * itemSelect - performs an action when a result is chosen.
+     *   \{function(?SearchResult|string, string)} itemSelect - Performs an action when a result is chosen.
      *      Passed the highlighted search result item (as returned by search()), and the current query string. Required.
-     * resultsFormatter - takes a query string and an item string and returns
-     *      a <LI> item to insert into the displayed search results. Optional.
-     * matcherOptions - options to pass along to the StringMatcher (see StringMatch.StringMatcher
+     *   \{function(SearchResult|string, string): string} [resultsFormatter] - Takes a query string and an item string and returns
+     *      a "LI" item to insert into the displayed search results. Optional.
+     *   \{Object} [matcherOptions] - Options to pass along to the StringMatcher (see StringMatch.StringMatcher
      *          for available options). Optional.
-     * label - if provided, the label to show before the query field. Optional.
+     *   \{string} [label] - If provided, the label to show before the query field. Optional.
      *
      * If itemFocus() makes changes to the current document or cursor/scroll position and then the user
      * cancels Quick Open (via Esc), those changes are automatically reverted.
      */
     function addQuickOpenPlugin(pluginDef) {
         var quickOpenProvider = new QuickOpenPlugin(
-                pluginDef.name,
-                pluginDef.languageIds,
-                pluginDef.done,
-                pluginDef.search,
-                pluginDef.match,
-                pluginDef.itemFocus,
-                pluginDef.itemSelect,
-                pluginDef.resultsFormatter,
-                pluginDef.matcherOptions,
-                pluginDef.label
-            ),
+            pluginDef.name,
+            pluginDef.languageIds,
+            pluginDef.done,
+            pluginDef.search,
+            pluginDef.match,
+            pluginDef.itemFocus,
+            pluginDef.itemSelect,
+            pluginDef.resultsFormatter,
+            pluginDef.matcherOptions,
+            pluginDef.label
+        ),
             providerLanguageIds = pluginDef.languageIds.length ? pluginDef.languageIds : ["all"],
             providerPriority = pluginDef.priority || 0;
 
@@ -193,31 +195,33 @@ define(function (require, exports, module) {
 
     /**
      * QuickNavigateDialog class
+     * @private
      * @constructor
      */
     function QuickNavigateDialog() {
         this.$searchField = undefined; // defined when showDialog() is called
 
         // ModalBar event handlers & callbacks
-        this._handleCloseBar           = this._handleCloseBar.bind(this);
+        this._handleCloseBar = this._handleCloseBar.bind(this);
 
         // QuickSearchField callbacks
-        this._handleItemSelect         = this._handleItemSelect.bind(this);
-        this._handleItemHighlight      = this._handleItemHighlight.bind(this);
-        this._filterCallback           = this._filterCallback.bind(this);
+        this._handleItemSelect = this._handleItemSelect.bind(this);
+        this._handleItemHighlight = this._handleItemHighlight.bind(this);
+        this._filterCallback = this._filterCallback.bind(this);
         this._resultsFormatterCallback = this._resultsFormatterCallback.bind(this);
 
         // StringMatchers that cache in-progress query data.
-        this._filenameMatcher           = new StringMatch.StringMatcher({
+        this._filenameMatcher = new StringMatch.StringMatcher({
             segmentedSearch: true
         });
-        this._matchers                  = {};
+        this._matchers = {};
     }
 
     /**
      * True if the search bar is currently open. Note that this is set to false immediately
      * when the bar starts closing; it doesn't wait for the ModalBar animation to finish.
      * @type {boolean}
+     * @private
      */
     QuickNavigateDialog.prototype.isOpen = false;
 
@@ -236,7 +240,7 @@ define(function (require, exports, module) {
      * information for the lifetime of a QuickNavigateDialog (a single search
      * until the dialog is dismissed)
      *
-     * @type {Object.<string, StringMatch.StringMatcher>}
+     * @type {{string, StringMatch.StringMatcher}}
      */
     QuickNavigateDialog.prototype._matchers = null;
 
@@ -261,7 +265,7 @@ define(function (require, exports, module) {
      * Remembers the selection state in origDocPath that was present when showDialog() was called. Focusing on an
      * item can change the selection; we restore this original selection if the user presses Escape. Null if
      * no document was open when Quick Open was invoked.
-     * @type {?Array.<{{start:{line:number, ch:number}, end:{line:number, ch:number}, primary:boolean, reversed:boolean}}>}
+     * @type {?{{start:{line:number, ch:number}, end:{line:number, ch:number}, primary:boolean, reversed:boolean}}}
      */
     QuickNavigateDialog.prototype._origSelections = null;
 
@@ -288,7 +292,7 @@ define(function (require, exports, module) {
     /**
      * Attempts to extract a line number from the query where the line number
      * is followed by a colon. Callers should explicitly test result with isNaN()
-     *
+     * @private
      * @param {string} query string to extract line number from
      * @return {{query: string, local: boolean, line: number, ch: number}} An object with
      *      the extracted line and column numbers, and two additional fields: query with the original position
@@ -299,8 +303,8 @@ define(function (require, exports, module) {
         var regInfo = query.match(CURSOR_POS_EXP);
 
         if (query.length <= 1 || !regInfo ||
-                (regInfo[1] && isNaN(regInfo[1])) ||
-                (regInfo[3] && isNaN(regInfo[3]))) {
+            (regInfo[1] && isNaN(regInfo[1])) ||
+            (regInfo[3] && isNaN(regInfo[3]))) {
 
             return null;
         }
@@ -320,6 +324,7 @@ define(function (require, exports, module) {
      * Note, if selectedItem is null quick search should inspect $searchField for text
      * that may have not matched anything in the list, but may have information
      * for carrying out an action (e.g. go to line).
+     * @private
      */
     QuickNavigateDialog.prototype._handleItemSelect = function (selectedItem, query) {
 
@@ -342,7 +347,7 @@ define(function (require, exports, module) {
                 // fixup, and let the full close() be triggered later when the new editor takes focus.
                 doClose = false;
                 this.modalBar.prepareClose();
-                CommandManager.execute(Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN, {fullPath: fullPath})
+                CommandManager.execute(Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN, { fullPath: fullPath })
                     .done(function () {
                         if (cursorPos) {
                             var editor = EditorManager.getCurrentFullEditor();
@@ -368,6 +373,7 @@ define(function (require, exports, module) {
     /**
      * Opens the file specified by selected item if there is no current plug-in, otherwise defers handling
      * to the currentPlugin
+     * @private
      */
     QuickNavigateDialog.prototype._handleItemHighlight = function (selectedItem, query, explicit) {
         if (currentPlugin && currentPlugin.itemFocus) {
@@ -379,6 +385,7 @@ define(function (require, exports, module) {
      * Closes the search bar; if search bar is already closing, returns the Promise that is tracking the
      * existing close activity.
      * @return {$.Promise} Resolved when the search bar is entirely closed.
+     * @private
      */
     QuickNavigateDialog.prototype.close = function () {
         if (!this.isOpen) {
@@ -473,8 +480,8 @@ define(function (require, exports, module) {
     /**
      * Handles changes to the current query in the search field.
      * @param {string} query The new query.
-     * @return {$.Promise|Array.<*>|{error:?string}} The filtered list of results, an error object, or a Promise that
-     *                                               yields one of those
+     * @return {$.Promise|Array.<*>|{error:?string}} The filtered list of results, an error object, or a Promise that yields one of those
+     * @private
      */
     QuickNavigateDialog.prototype._filterCallback = function (query) {
         // Re-evaluate which plugin is active each time query string changes
@@ -488,8 +495,8 @@ define(function (require, exports, module) {
 
             // Validate (could just use 0 and lineCount() here, but in future might want this to work for inline editors too)
             if (cursorPos && editor && cursorPos.line >= editor.getFirstVisibleLine() && cursorPos.line <= editor.getLastVisibleLine()) {
-                var from = {line: cursorPos.line, ch: cursorPos.ch},
-                    to   = {line: cursorPos.line};
+                var from = { line: cursorPos.line, ch: cursorPos.ch },
+                    to = { line: cursorPos.line };
                 EditorManager.getCurrentFullEditor().setSelection(from, to, true);
 
                 return { error: null };  // no error even though no results listed
@@ -505,7 +512,7 @@ define(function (require, exports, module) {
             plugins = _getPluginsForCurrentContext();
         for (i = 0; i < plugins.length; i++) {
             var plugin = plugins[i].provider;
-            if(plugin.match(query)) {
+            if (plugin.match(query)) {
                 currentPlugin = plugin;
 
                 // Look up the StringMatcher for this plugin.
@@ -599,6 +606,7 @@ define(function (require, exports, module) {
 
     /**
      * Formats the entry for the given item to be displayed in the dropdown.
+     * @private
      * @param {Object} item The item to be displayed.
      * @return {string} The HTML to be displayed.
      */
@@ -618,6 +626,7 @@ define(function (require, exports, module) {
     /**
      * Sets the value in the search field, updating the current mode and label based on the
      * given prefix.
+     * @private
      * @param {string} prefix The prefix that determines which mode we're in: must be empty (for file search),
      *      "@" for go to definition, or ":" for go to line.
      * @param {string} initialString The query string to search for (without the prefix).
@@ -635,6 +644,7 @@ define(function (require, exports, module) {
 
     /**
      * Sets the dialog label based on the current plugin (if any) and the current query.
+     * @private
      * @param {Object} plugin The current Quick Open plugin, or none if there is none.
      * @param {string} query The user's current query.
      */
@@ -647,18 +657,18 @@ define(function (require, exports, module) {
 
             // Update the dialog label based on the current prefix.
             switch (prefix) {
-            case ":":
-                dialogLabel = Strings.CMD_GOTO_LINE + "\u2026";
-                break;
-            case "@":
-                dialogLabel = Strings.CMD_GOTO_DEFINITION + "\u2026";
-                break;
-            case "#":
-                dialogLabel = Strings.CMD_GOTO_DEFINITION_PROJECT + "\u2026";
-                break;
-            default:
-                dialogLabel = "";
-                break;
+                case ":":
+                    dialogLabel = Strings.CMD_GOTO_LINE + "\u2026";
+                    break;
+                case "@":
+                    dialogLabel = Strings.CMD_GOTO_DEFINITION + "\u2026";
+                    break;
+                case "#":
+                    dialogLabel = Strings.CMD_GOTO_DEFINITION_PROJECT + "\u2026";
+                    break;
+                default:
+                    dialogLabel = "";
+                    break;
             }
         }
         $(".find-dialog-label", this.dialog).text(dialogLabel);
@@ -666,6 +676,7 @@ define(function (require, exports, module) {
 
     /**
      * Shows the search dialog and initializes the auto suggestion list with filenames from the current project
+     * @private
      */
     QuickNavigateDialog.prototype.showDialog = function (prefix, initialString) {
         if (this.isOpen) {
@@ -686,7 +697,7 @@ define(function (require, exports, module) {
         }
 
         // Show the search bar
-        var searchBarHTML =`<div align='right'>
+        var searchBarHTML = `<div align='right'>
             <div id="indexing-spinner" class="indexing-group">
                 <div class="spinner inline spin"></div>
                 <div id="indexing-spinner-message" class="indexing-message">${Strings.FIND_IN_FILES_INDEXING}</div>
@@ -864,25 +875,25 @@ define(function (require, exports, module) {
             .done(function (oldDoc) {
                 oldDoc.off("languageChanged.quickFindDefinition");
             }).fail(function (err) {
-                if(err !== FileSystemError.UNSUPPORTED_ENCODING) {
+                if (err !== FileSystemError.UNSUPPORTED_ENCODING) {
                     console.error(err);
                 }
             });
     });
 
-    CommandManager.register(Strings.CMD_QUICK_OPEN,         Commands.NAVIGATE_QUICK_OPEN,       doFileSearch);
-    CommandManager.register(Strings.CMD_GOTO_DEFINITION,    Commands.NAVIGATE_GOTO_DEFINITION,  doDefinitionSearch);
-    CommandManager.register(Strings.CMD_GOTO_DEFINITION_PROJECT,    Commands.NAVIGATE_GOTO_DEFINITION_PROJECT,  doDefinitionSearchInProject);
-    CommandManager.register(Strings.CMD_GOTO_LINE,          Commands.NAVIGATE_GOTO_LINE,        doGotoLine);
+    CommandManager.register(Strings.CMD_QUICK_OPEN, Commands.NAVIGATE_QUICK_OPEN, doFileSearch);
+    CommandManager.register(Strings.CMD_GOTO_DEFINITION, Commands.NAVIGATE_GOTO_DEFINITION, doDefinitionSearch);
+    CommandManager.register(Strings.CMD_GOTO_DEFINITION_PROJECT, Commands.NAVIGATE_GOTO_DEFINITION_PROJECT, doDefinitionSearchInProject);
+    CommandManager.register(Strings.CMD_GOTO_LINE, Commands.NAVIGATE_GOTO_LINE, doGotoLine);
 
-    exports.beginSearch             = beginSearch;
-    exports.addQuickOpenPlugin      = addQuickOpenPlugin;
-    exports.highlightMatch          = highlightMatch;
-    exports.SymbolKind              = SymbolKind;
+    exports.beginSearch = beginSearch;
+    exports.addQuickOpenPlugin = addQuickOpenPlugin;
+    exports.highlightMatch = highlightMatch;
+    exports.SymbolKind = SymbolKind;
 
     // Convenience exports for functions that most QuickOpen plugins would need.
-    exports.stringMatch             = StringMatch.stringMatch;
-    exports.SearchResult            = StringMatch.SearchResult;
-    exports.basicMatchSort          = StringMatch.basicMatchSort;
-    exports.multiFieldSort          = StringMatch.multiFieldSort;
+    exports.stringMatch = StringMatch.stringMatch;
+    exports.SearchResult = StringMatch.SearchResult;
+    exports.basicMatchSort = StringMatch.basicMatchSort;
+    exports.multiFieldSort = StringMatch.multiFieldSort;
 });

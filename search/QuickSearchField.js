@@ -19,7 +19,9 @@
  *
  */
 
-/*
+// @INCLUDE_IN_API_DOCS
+
+/**
  * Text field with attached dropdown list that is updated (based on a provider) whenever the text changes.
  *
  * For styling, the DOM structure of the popup is as follows:
@@ -36,39 +38,38 @@ define(function (require, exports, module) {
 
 
     const KeyEvent = require("utils/KeyEvent"),
-        PopUpManager      = require("widgets/PopUpManager");
-
+        PopUpManager = require("widgets/PopUpManager");
 
     /**
-     * Attaches to an existing <input> tag
+     * Attaches to an existing "input" tag
      *
      * @constructor
      *
      * @param {!jQueryObject} $input
-     * @param {!function(string):($.Promise|Array.<*>|{error:?string}} options.resultProvider
-     *          Given the current search text, returns an an array of result objects, an error object, or a
+     * @param {!function(string): ($.Promise|Array.<*>|{error:?string})} options.resultProvider
+     *          Given the current search text, returns an array of result objects, an error object, or a
      *          Promise that yields one of those. If the Promise is still outstanding when the query next
      *          changes, resultProvider() will be called again (without waiting for the earlier Promise), and
      *          the Promise's result will be ignored.
      *          If the provider yields [], or a non-null error string, input is decorated with ".no-results"; if
      *          the provider yields a null error string, input is not decorated.
      *
-     * @param {!function(*, string):string} options.formatter
+     * @param {!function(*, string): string} options.formatter
      *          Converts one result object to a string of HTML text. Passed the item and the current query. The
-     *          outermost element must be <li>. The ".highlight" class can be ignored as it is applied automatically.
-     * @param {!function(?*, string, number):void} options.onCommit
+     *          outermost element must be "li". The ".highlight" class can be ignored as it is applied automatically.
+     * @param {!function(?*, string, number): void} options.onCommit
      *          Called when an item is selected by clicking or pressing Enter. Passed the committed item and the current
      *          query and its index. If the current result list is not up to date with the query text at the time Enter is
      *          pressed, waits until it is before running this callback. If Enter pressed with no results, passed
      *          null. The popup remains open after this event.
-     * @param {!function(*, string, boolean):void} options.onHighlight
+     * @param {!function(*, string, boolean): void} options.onHighlight
      *          Called when an item is highlighted in the list. Passed the item, the current query, and a flag that is
      *          true if the item was highlighted explicitly (arrow keys), not simply due to a results list update. Since
      *          the top item in the list is always initially highlighted, every time the list is updated onHighlight()
      *          is called with the top item and with the explicit flag set to false.
-     * @param {!function(*):void} options.onDelete
+     * @param {!function(*): void} options.onDelete
      *          Called when delete key is pressed on a selected item in the list. Passed the item.
-     * @param {!function():void} options.onDismiss
+     * @param {!function(): void} options.onDismiss
      *          Called when popup is dismissed with escape key press. Popup is not usable after this point.
      * @param {?number} options.maxResults
      *          Maximum number of items from resultProvider() to display in the popup.
@@ -76,10 +77,12 @@ define(function (require, exports, module) {
      *          Number of pixels to position the popup below where $input is when constructor is called. Useful
      *          if UI is going to animate position after construction, but QuickSearchField may receive input
      *          before the animation is done.
-     * @param {jQueryObject} options.$positionEl if provided, the popup will be positioned based on this
+     * @param {jQueryObject} options.$positionEl
+     *          If provided, the popup will be positioned based on this.
      * @param {?number} options.firstHighlightIndex
      *          Index of the result that is highlighted by default. null to not highlight any result.
-     * @param {?number} options.focusLastActiveElementOnClose if set to true, focuses the last active element on close.
+     * @param {?boolean} options.focusLastActiveElementOnClose
+     *          If set to true, focuses the last active element on close.
      *          By default, the editor is always focused.
      *
      */
@@ -90,7 +93,7 @@ define(function (require, exports, module) {
 
         options.maxResults = options.maxResults || 10;
 
-        this._handleInput   = this._handleInput.bind(this);
+        this._handleInput = this._handleInput.bind(this);
         this._handleKeyDown = this._handleKeyDown.bind(this);
 
         if (options.highlightZeroResults !== undefined) {
@@ -111,32 +114,57 @@ define(function (require, exports, module) {
     /** @type {!Object} */
     QuickSearchField.prototype.options = null;
 
-    /** @type {?$.Promise} Promise corresponding to latest resultProvider call. Any earlier promises ignored */
+    /**
+     * @type {?$.Promise} Promise corresponding to latest resultProvider call. Any earlier promises ignored
+     * @private
+     */
     QuickSearchField.prototype._pending = null;
 
-    /** @type {boolean} True if Enter already pressed & just waiting for results to arrive before committing */
+    /**
+     * @type {boolean} True if Enter already pressed & just waiting for results to arrive before committing
+     * @private
+     */
     QuickSearchField.prototype._commitPending = false;
 
-    /** @type {?string} Value of $input corresponding to the _displayedResults list */
+    /**
+     * @type {?string} Value of $input corresponding to the _displayedResults list
+     * @private
+     */
     QuickSearchField.prototype._displayedQuery = null;
 
-    /** @type {?Array.<*>}  Latest resultProvider result */
+    /**
+     * @type {?Array.<*>}  Latest resultProvider result
+     * @private
+     */
     QuickSearchField.prototype._displayedResults = null;
 
-    /** @type {?number} */
+    /**
+     * @type {?number}
+     * @private
+     */
     QuickSearchField.prototype._highlightIndex = null;
 
-    /** @type {?jQueryObject} Dropdown's <ol>, while open; null while closed */
+    /**
+     * @type {?jQueryObject} Dropdown's "ol", while open; null while closed
+     * @private
+     */
     QuickSearchField.prototype._$dropdown = null;
 
-    /** @type {!jQueryObject} */
+    /**
+     * @type {!jQueryObject}
+     */
     QuickSearchField.prototype.$input = null;
 
-    /** @type {!jQueryObject} */
+    /**
+     * @type {!jQueryObject}
+     */
     QuickSearchField.prototype.$positionEl = null;
 
 
-    /** When text field changes, update results list */
+    /**
+     * When text field changes, update results list
+     * @private
+     */
     QuickSearchField.prototype._handleInput = function () {
         this._pending = null;  // immediately invalidate any previous Promise
 
@@ -152,10 +180,13 @@ define(function (require, exports, module) {
         }, 0);
     };
 
-    /** Handle special keys: Enter, Up/Down */
+    /**
+     * Handle special keys: Enter, Up/Down
+     * @private
+     */
     QuickSearchField.prototype._handleKeyDown = function (event) {
         let popupVisible = false;
-        if(this._$dropdown && this._$dropdown.is(":visible")){
+        if (this._$dropdown && this._$dropdown.is(":visible")) {
             popupVisible = true;
         }
         if (event.keyCode === KeyEvent.DOM_VK_RETURN) {
@@ -208,7 +239,10 @@ define(function (require, exports, module) {
         }
     };
 
-    /** Call onCommit() immediately */
+    /**
+     * Call onCommit() immediately
+     * @private
+     */
     QuickSearchField.prototype._doCommit = function (index) {
         var item;
         if (this._displayedResults && this._displayedResults.length) {
@@ -221,7 +255,10 @@ define(function (require, exports, module) {
         this.options.onCommit(item, this._displayedQuery, this._highlightIndex);
     };
 
-    /** Update display to reflect value of _highlightIndex, & call onHighlight() */
+    /**
+     * Update display to reflect value of _highlightIndex, & call onHighlight()
+     * @private
+     */
     QuickSearchField.prototype._updateHighlight = function (explicit) {
         if (this._$dropdown) {
             var $items = this._$dropdown.find("li");
@@ -269,20 +306,24 @@ define(function (require, exports, module) {
     };
 
 
-    /** Close dropdown result list if visible */
+    /**
+     * Close dropdown result list if visible
+     * @private
+     */
     QuickSearchField.prototype._closeDropdown = function () {
         if (this._$dropdown) {
             this._$dropdown.remove();
             this._$dropdown = null;
         }
-        if(this.options.focusLastActiveElementOnClose && this._$currentlyFocusedElement
-         && this._$currentlyFocusedElement.is(":visible")) {
+        if (this.options.focusLastActiveElementOnClose && this._$currentlyFocusedElement
+            && this._$currentlyFocusedElement.is(":visible")) {
             this._$currentlyFocusedElement.focus();
         }
     };
 
     /**
      * Open dropdown result list & populate with the given content
+     * @private
      * @param {!string|jQueryObject} htmlContent
      */
     QuickSearchField.prototype._openDropdown = function (htmlContent) {
@@ -306,9 +347,9 @@ define(function (require, exports, module) {
                 });
         }
         this._$dropdown.html(htmlContent);
-        PopUpManager.addPopUp(this._$dropdown, ()=>{
+        PopUpManager.addPopUp(this._$dropdown, () => {
             self.destroy();
-            if(self.options.onDismiss){
+            if (self.options.onDismiss) {
                 self.options.onDismiss();
             }
         }, true, {
@@ -319,6 +360,7 @@ define(function (require, exports, module) {
     /**
      * Given finished provider result, format it into HTML and show in dropdown, and update "no-results" style.
      * If an Enter key commit was pending from earlier, process it now.
+     * @private
      * @param {!Array.<*>} results
      * @param {!string} query
      */
@@ -326,7 +368,7 @@ define(function (require, exports, module) {
         this._displayedQuery = query;
         this._displayedResults = results;
         if (this._highlightIndex) {
-            if(this._highlightIndex >= results.length){
+            if (this._highlightIndex >= results.length) {
                 this._highlightIndex = results.length - 1;
             }
         } else if (this._firstHighlightIndex >= 0) {
@@ -393,7 +435,7 @@ define(function (require, exports, module) {
     QuickSearchField.prototype.destroy = function () {
         this._pending = null;  // immediately invalidate any pending Promise
         this._closeDropdown();
-        if(this.$input){
+        if (this.$input) {
             this.$input.off("input", this._handleInput);
             this.$input.off("keydown", this._handleKeyDown);
             this.$input = null;

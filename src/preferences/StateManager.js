@@ -2,7 +2,6 @@
  * GNU AGPL-3.0 License
  *
  * Copyright (c) 2021 - present core.ai . All rights reserved.
- * Original work Copyright (c) 2012 - 2021 Adobe Systems Incorporated. All rights reserved.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License as published by
@@ -19,6 +18,9 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
+
 /*unittests: Preferences Manager */
 /*global fs*/
 
@@ -31,9 +33,27 @@ define(function (require, exports, module) {
         EventDispatcher = require("utils/EventDispatcher"),
         ProjectManager = require("project/ProjectManager");
 
+    /**
+     * Project specific context
+     * @const
+     * @type {string}
+     */
     const PROJECT_CONTEXT = "project";
+
+    /**
+     * Global context
+     * @const
+     * @type {string}
+     */
     const GLOBAL_CONTEXT = "global";
+
+    /**
+     * Project or global context
+     * @const
+     * @type {string}
+     */
     const PROJECT_THEN_GLOBAL_CONTEXT = "any";
+
     const PHSTORE_STATEMANAGER_PREFIX = "STATE_";
     const transformDotsInID = {};
 
@@ -183,6 +203,12 @@ define(function (require, exports, module) {
         return preference;
     }
 
+    /**
+     * Get the preference instance for the given ID.
+     *
+     * @param {string} id
+     * @returns {{}}
+     */
     function getPreferenceInternal(id) {
         if(!definedPreferences[id]){
             throw new Error("getPreference " + id + " no such preference defined.");
@@ -191,6 +217,19 @@ define(function (require, exports, module) {
     }
 
     const knownExtensions = {};
+
+    /**
+     * create a state manager for an extension.
+     * ensure that the IDs are unique.
+     *
+     * @param {string} extensionID
+     * @returns {object} Object with methods to manage the extension's state and preferences.
+     * - `get(id, context)`: Get the value from the extension's state.
+     * - `set(id, value, context)`: Set the value in the extension's state.
+     * - `definePreference(id, type, initial, options)`: define a preference for the extension.
+     * - `getPreference(id)`: retrieve a defined preference.
+     * - `PROJECT_CONTEXT`, `GLOBAL_CONTEXT`, `PROJECT_THEN_GLOBAL_CONTEXT`: constant for context management.
+     */
     function createExtensionStateManager(extensionID) {
         let i=0;
         if(extensionID.includes(".")){

@@ -19,24 +19,53 @@
  *
  */
 
+// @INCLUDE_IN_API_DOCS
+
 define(function (require, exports, module) {
 
 
-    var Async               = require("utils/Async"),
-        DocumentManager     = require("document/DocumentManager"),
-        MainViewManager     = require("view/MainViewManager"),
-        FileSystem          = require("filesystem/FileSystem"),
-        FileUtils           = require("file/FileUtils"),
-        ProjectManager      = require("project/ProjectManager"),
-        EventDispatcher     = require("utils/EventDispatcher"),
-        Strings             = require("strings"),
-        StringUtils         = require("utils/StringUtils"),
-        _                   = require("thirdparty/lodash");
+    var Async = require("utils/Async"),
+        DocumentManager = require("document/DocumentManager"),
+        MainViewManager = require("view/MainViewManager"),
+        FileSystem = require("filesystem/FileSystem"),
+        FileUtils = require("file/FileUtils"),
+        ProjectManager = require("project/ProjectManager"),
+        EventDispatcher = require("utils/EventDispatcher"),
+        Strings = require("strings"),
+        StringUtils = require("utils/StringUtils"),
+        _ = require("thirdparty/lodash");
 
-    var instantSearchDisabled = false,
-        indexingInProgress = false,
-        workerSearchCount = 0,
-        collapseResults = false;
+    /**
+     * if instant search is disabled, defaults to false
+     *
+     * @private
+     * @type {boolean}
+     */
+    let instantSearchDisabled = false;
+
+    /**
+     * if indexing in progress, defaults to false
+     *
+     * @private
+     * @type {boolean}
+     */
+    let indexingInProgress = false;
+
+    /**
+     * count of worker search, defaults to 0
+     *
+     * @private
+     * @type {number}
+     */
+    let workerSearchCount = 0;
+
+    /**
+     * if collapse results, defaults to false
+     *
+     * @private
+     * @type {boolean}
+     */
+    let collapseResults = false;
 
     EventDispatcher.makeEventDispatcher(exports);
 
@@ -45,6 +74,7 @@ define(function (require, exports, module) {
      * regexp match info.
      * NOTE: we can't just use the ordinary replace() function here because the string has been
      * extracted from the original text and so might be missing some context that the regexp matched.
+     *
      * @param {string} replaceWith The string containing the $-expressions.
      * @param {Object} match The match data from the regexp.
      * @return {string} The replace text with the $-expressions substituted.
@@ -57,11 +87,11 @@ define(function (require, exports, module) {
                     // whole match
                     return dollars.substr(1) + (match[0] || "");
                 }
-                    // now we're sure index is an integer, so we can parse it
+                // now we're sure index is an integer, so we can parse it
                 var parsedIndex = parseInt(index, 10);
                 if (parsedIndex !== 0) { // handle $n or $nn, but don't handle $0 or $00
-                        // slice the first dollar (but leave any others to get unescaped below) and return the
-                        // the corresponding match
+                    // slice the first dollar (but leave any others to get unescaped below) and return the
+                    // the corresponding match
                     return dollars.substr(1) + (match[parsedIndex] || "");
                 }
 
@@ -76,6 +106,8 @@ define(function (require, exports, module) {
 
     /**
      * Does a set of replacements in a single document in memory.
+     *
+     * @private
      * @param {!Document} doc The document to do the replacements in.
      * @param {Object} matchInfo The match info for this file, as returned by `_addSearchMatches()`. Might be mutated.
      * @param {string} replaceText The text to replace each result with.
@@ -108,6 +140,8 @@ define(function (require, exports, module) {
 
     /**
      * Does a set of replacements in a single file on disk.
+     *
+     * @private
      * @param {string} fullPath The full path to the file.
      * @param {Object} matchInfo The match info for this file, as returned by `_addSearchMatches()`.
      * @param {string} replaceText The text to replace each result with.
@@ -149,6 +183,8 @@ define(function (require, exports, module) {
     /**
      * Does a set of replacements in a single file. If the file is already open in a Document in memory,
      * will do the replacement there, otherwise does it directly on disk.
+     *
+     * @private
      * @param {string} fullPath The full path to the file.
      * @param {Object} matchInfo The match info for this file, as returned by `_addSearchMatches()`.
      * @param {string} replaceText The text to replace each result with.
@@ -184,29 +220,34 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Given a set of search results, replaces them with the given replaceText, either on disk or in memory.
+     * Given a set of search results, replaces them with the given `replaceText`, either on disk or in memory.
      * Checks timestamps to ensure replacements are not performed in files that have changed on disk since
      * the original search results were generated. However, does *not* check whether edits have been performed
      * in in-memory documents since the search; it's up to the caller to guarantee this hasn't happened.
-     * (When called from the standard Find in Files UI, SearchResultsView guarantees this. If called headlessly,
+     * (When called from the standard Find in Files UI, `SearchResultsView` guarantees this. If called headlessly,
      * the caller needs to track changes.)
      *
      * Replacements in documents that are already open in memory at the start of the replacement are guaranteed to
      * happen synchronously; replacements in files on disk will return an error if the on-disk file changes between
-     * the time performReplacements() is called and the time the replacement actually happens.
+     * the time `performReplacements()` is called and the time the replacement actually happens.
      *
-     * @param {Object.<fullPath: string, {matches: Array.<{start: {line:number,ch:number}, end: {line:number,ch:number}, startOffset: number, endOffset: number, line: string}>, collapsed: boolean}>} results
-     *      The list of results to replace, as returned from _doSearch..
-     * @param {string} replaceText The text to replace each result with.
-     * @param {?Object} options An options object:
-     *      forceFilesOpen: boolean - Whether to open all files in editors and do replacements there rather than doing the
-     *          replacements on disk. Note that even if this is false, files that are already open in editors will have replacements
-     *          done in memory.
-     *      isRegexp: boolean - Whether the original query was a regexp. If true, $-substitution is performed on the replaceText.
-     * @return {$.Promise} A promise that's resolved when the replacement is finished or rejected with an array of errors
-     *      if there were one or more errors. Each individual item in the array will be a {item: string, error: string} object,
-     *      where item is the full path to the file that could not be updated, and error is either a FileSystem error or one
-     *      of the `FindUtils.ERROR_*` constants.
+     * @param {{string: {matches: {start: {line: number, ch: number}, end: {line: number, ch: number}, startOffset: number, endOffset: number, line: string}, collapsed: boolean}}} results
+     *     The list of results to replace, as returned from `_doSearch`.
+     * @param {string} replaceText
+     *     The text to replace each result with.
+     * @param {?Object} options
+     *     An options object:
+     *     @param {boolean} [options.forceFilesOpen]
+     *         Whether to open all files in editors and do replacements there rather than doing the
+     *         replacements on disk. Note that even if this is false, files that are already open in editors will have replacements
+     *         done in memory.
+     *     @param {boolean} [options.isRegexp]
+     *         Whether the original query was a regexp. If true, $-substitution is performed on the replaceText.
+     * @return {$.Promise}
+     *     A promise that's resolved when the replacement is finished or rejected with an array of errors
+     *     if there were one or more errors. Each individual item in the array will be a `{item: string, error: string}` object,
+     *     where `item` is the full path to the file that could not be updated, and `error` is either a FileSystem error or one
+     *     of the `FindUtils.ERROR_*` constants.
      */
     function performReplacements(results, replaceText, options) {
         return Async.doInParallel_aggregateErrors(Object.keys(results), function (fullPath) {
@@ -217,8 +258,8 @@ define(function (require, exports, module) {
                 // then open the first modified document.
                 var doc = DocumentManager.getCurrentDocument();
                 if (!doc ||
-                        !results[doc.file.fullPath] ||
-                        !hasCheckedMatches(results[doc.file.fullPath])) {
+                    !results[doc.file.fullPath] ||
+                    !hasCheckedMatches(results[doc.file.fullPath])) {
                     // Figure out the first modified document. This logic is slightly different from
                     // SearchResultsView._getSortedFiles() because it doesn't sort the currently open file to
                     // the top. But if the currently open file were in the search results, we wouldn't be
@@ -252,6 +293,7 @@ define(function (require, exports, module) {
 
     /**
      * Returns label text to indicate the search scope. Already HTML-escaped.
+     *
      * @param {?Entry} scope
      * @return {string}
      */
@@ -270,6 +312,7 @@ define(function (require, exports, module) {
 
     /**
      * Parses the given query into a regexp, and returns whether it was valid or not.
+     *
      * @param {{query: string, caseSensitive: boolean, isRegexp: boolean}} queryInfo
      * @return {{queryExpr: RegExp, valid: boolean, empty: boolean, error: string}}
      *      queryExpr - the regexp representing the query
@@ -281,7 +324,7 @@ define(function (require, exports, module) {
         var queryExpr;
 
         if (!queryInfo || !queryInfo.query) {
-            return {empty: true};
+            return { empty: true };
         }
 
         // For now, treat all matches as multiline (i.e. ^/$ match on every line, not the whole
@@ -297,21 +340,22 @@ define(function (require, exports, module) {
             try {
                 queryExpr = new RegExp(queryInfo.query, flags);
             } catch (e) {
-                return {valid: false, error: e.message};
+                return { valid: false, error: e.message };
             }
         } else {
             // Query is a plain string. Turn it into a regexp
             queryExpr = new RegExp(StringUtils.regexEscape(queryInfo.query), flags);
         }
-        return {valid: true, queryExpr: queryExpr};
+        return { valid: true, queryExpr: queryExpr };
     }
 
-     /**
-     * Prioritizes the open file and then the working set files to the starting of the list of files
-     * @param {Array.<*>} files An array of file paths or file objects to sort
-     * @param {?string} firstFile If specified, the path to the file that should be sorted to the top.
-     * @return {Array.<*>}
-     */
+    /**
+    * Prioritizes the open file and then the working set files to the starting of the list of files
+     *
+    * @param {Array.<*>} files An array of file paths or file objects to sort
+    * @param {?string} firstFile If specified, the path to the file that should be sorted to the top.
+    * @return {Array.<*>}
+    */
     function prioritizeOpenFile(files, firstFile) {
         var workingSetFiles = MainViewManager.getWorkingSet(MainViewManager.ALL_PANES),
             workingSetFileFound = {},
@@ -352,6 +396,7 @@ define(function (require, exports, module) {
 
     /**
      * Returns the path of the currently open file or null if there isn't one open
+     *
      * @return {?string}
      */
     function getOpenFilePath() {
@@ -361,6 +406,7 @@ define(function (require, exports, module) {
 
     /**
      * enable/disable instant search
+     *
      * @param {boolean} disable true to disable web worker based search
      */
     function setInstantSearchDisabled(disable) {
@@ -369,6 +415,7 @@ define(function (require, exports, module) {
 
     /**
      * if instant search is disabled, this will return true we can only do instant search through worker
+     *
      * @return {boolean}
      */
     function isInstantSearchDisabled() {
@@ -377,6 +424,7 @@ define(function (require, exports, module) {
 
     /**
      * check if a search is progressing in worker
+     *
      * @return {Boolean} true if search is processing in worker
      */
     function isWorkerSearchInProgress() {
@@ -443,6 +491,7 @@ define(function (require, exports, module) {
 
     /**
      * Return true if indexing is in progress in worker
+     *
      * @return {boolean} true if files are being indexed in worker
      */
     function isIndexingInProgress() {
@@ -451,6 +500,7 @@ define(function (require, exports, module) {
 
     /**
      * Set if we need to collapse all results in the results pane
+     *
      * @param {boolean} collapse true to collapse
      */
     function setCollapseResults(collapse) {
@@ -460,41 +510,42 @@ define(function (require, exports, module) {
 
     /**
      * check if results should be collapsed
+     *
      * @return {boolean} true if results should be collapsed
      */
     function isCollapsedResults() {
         return collapseResults;
     }
 
-    exports.parseDollars                    = parseDollars;
-    exports.hasCheckedMatches               = hasCheckedMatches;
-    exports.performReplacements             = performReplacements;
-    exports.labelForScope                   = labelForScope;
-    exports.parseQueryInfo                  = parseQueryInfo;
-    exports.prioritizeOpenFile              = prioritizeOpenFile;
-    exports.getOpenFilePath                 = getOpenFilePath;
-    exports.setInstantSearchDisabled        = setInstantSearchDisabled;
-    exports.isInstantSearchDisabled         = isInstantSearchDisabled;
-    exports.isWorkerSearchInProgress        = isWorkerSearchInProgress;
-    exports.isIndexingInProgress            = isIndexingInProgress;
-    exports.setCollapseResults              = setCollapseResults;
-    exports.isCollapsedResults              = isCollapsedResults;
-    exports.ERROR_FILE_CHANGED              = "fileChanged";
+    exports.parseDollars = parseDollars;
+    exports.hasCheckedMatches = hasCheckedMatches;
+    exports.performReplacements = performReplacements;
+    exports.labelForScope = labelForScope;
+    exports.parseQueryInfo = parseQueryInfo;
+    exports.prioritizeOpenFile = prioritizeOpenFile;
+    exports.getOpenFilePath = getOpenFilePath;
+    exports.setInstantSearchDisabled = setInstantSearchDisabled;
+    exports.isInstantSearchDisabled = isInstantSearchDisabled;
+    exports.isWorkerSearchInProgress = isWorkerSearchInProgress;
+    exports.isIndexingInProgress = isIndexingInProgress;
+    exports.setCollapseResults = setCollapseResults;
+    exports.isCollapsedResults = isCollapsedResults;
+    exports.ERROR_FILE_CHANGED = "fileChanged";
 
     // event notification functions
-    exports.notifyFileFiltersChanged        = notifyFileFiltersChanged;
-    exports.notifySearchScopeChanged        = notifySearchScopeChanged;
-    exports.notifyWorkerSearchStarted       = notifyWorkerSearchStarted;
-    exports.notifyWorkerSearchFinished      = notifyWorkerSearchFinished;
-    exports.notifyIndexingStarted           = notifyIndexingStarted;
-    exports.notifyIndexingProgress          = notifyIndexingProgress;
-    exports.notifyIndexingFinished          = notifyIndexingFinished;
+    exports.notifyFileFiltersChanged = notifyFileFiltersChanged;
+    exports.notifySearchScopeChanged = notifySearchScopeChanged;
+    exports.notifyWorkerSearchStarted = notifyWorkerSearchStarted;
+    exports.notifyWorkerSearchFinished = notifyWorkerSearchFinished;
+    exports.notifyIndexingStarted = notifyIndexingStarted;
+    exports.notifyIndexingProgress = notifyIndexingProgress;
+    exports.notifyIndexingFinished = notifyIndexingFinished;
 
     // events raised by FindUtils
-    exports.SEARCH_FILE_FILTERS_CHANGED              = "fileFiltersChanged";
-    exports.SEARCH_SCOPE_CHANGED                     = "searchScopeChanged";
-    exports.SEARCH_INDEXING_STARTED                  = "searchIndexingStarted";
-    exports.SEARCH_INDEXING_PROGRESS                 = "searchIndexingProgress";
-    exports.SEARCH_INDEXING_FINISHED                 = "searchIndexingFinished";
-    exports.SEARCH_COLLAPSE_RESULTS                  = "searchCollapseResults";
+    exports.SEARCH_FILE_FILTERS_CHANGED = "fileFiltersChanged";
+    exports.SEARCH_SCOPE_CHANGED = "searchScopeChanged";
+    exports.SEARCH_INDEXING_STARTED = "searchIndexingStarted";
+    exports.SEARCH_INDEXING_PROGRESS = "searchIndexingProgress";
+    exports.SEARCH_INDEXING_FINISHED = "searchIndexingFinished";
+    exports.SEARCH_COLLAPSE_RESULTS = "searchCollapseResults";
 });
