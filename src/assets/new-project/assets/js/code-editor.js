@@ -121,7 +121,7 @@ function _showFirstTimeExperience() {
         createNotificationFromTemplate(Strings.DEFAULT_PROJECT_NOTIFICATION,
             "defaultProjectButton", {
                 allowedPlacements: ["left", "right"],
-                autoCloseTimeS: 15,
+                autoCloseTimeS: 600,
                 dismissOnClick: true
             });
         PhStore.setItem('notification.defaultProject.Shown', 'true');
@@ -203,10 +203,6 @@ function initCodeEditor() {
             Metrics.countEvent(Metrics.EVENT_TYPE.NEW_PROJECT, "main.Click", iconID);
             _openURLInTauri(document.getElementById(iconID).getAttribute('href'));
         };
-    }
-    if(window.top.__TAURI__) {
-        // in desktop, we don't show github project option till we have git extension integrated.
-        document.getElementById("newGitHubProject").classList.add("forced-hidden");
     }
     document.getElementById("newGitHubProject").onclick = function() {
         Metrics.countEvent(Metrics.EVENT_TYPE.NEW_PROJECT, "main.Click", "github-project");

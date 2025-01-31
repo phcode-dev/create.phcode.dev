@@ -58,6 +58,7 @@ define(function (require, exports, module) {
         LanguageManager     = require("language/LanguageManager"),
         NewFileContentManager     = require("features/NewFileContentManager"),
         NodeConnector = require("NodeConnector"),
+        NodeUtils           = require("utils/NodeUtils"),
         _                   = require("thirdparty/lodash");
 
     /**
@@ -1615,6 +1616,7 @@ define(function (require, exports, module) {
      * @private - tracks our closing state if we get called again
      */
     var _windowGoingAway = false;
+    let exitWaitPromises = [];
 
     /**
      * @private
@@ -1633,12 +1635,15 @@ define(function (require, exports, module) {
 
         return CommandManager.execute(Commands.FILE_CLOSE_ALL, { promptOnly: true })
             .done(function () {
+                exitWaitPromises = [];
                 _windowGoingAway = true;
 
                 // Give everyone a chance to save their state - but don't let any problems block
                 // us from quitting
                 try {
-                    ProjectManager.trigger("beforeAppClose");
+                    // if someone wats to do any deferred tasks, they should add
+                    // their promise to the wait promises list.
+                    ProjectManager.trigger("beforeAppClose", exitWaitPromises);
                 } catch (ex) {
                     console.error(ex);
                 }
@@ -1915,9 +1920,13 @@ define(function (require, exports, module) {
         return Strings.MOVE_TO_TRASH;
     }
 
-    /** Delete file command handler  **/
-    function handleFileDelete() {
-        const entry = ProjectManager.getSelectedItem();
+    /** Delete file command handler
+     *
+     * @param {{file: File}} [commandData]  Optional bag of arguments:
+     *      file - File to delete; assumes the current document if not specified.
+     *  **/
+    function handleFileDelete(commandData={}) {
+        const entry = commandData.file || ProjectManager.getSelectedItem();
         const canMoveToTrash = Phoenix.app.canMoveToTrash(entry.fullPath);
         Dialogs.showModalDialog(
             DefaultDialogs.DIALOG_ID_EXT_DELETED,
@@ -1956,6 +1965,36 @@ define(function (require, exports, module) {
         if (entry) {
             brackets.app.openPathInFileBrowser(entry.fullPath)
                 .catch(err=>console.error("Error showing '" + entry.fullPath + "' in OS folder:", err));
+        } else {
+            brackets.app.openPathInFileBrowser(ProjectManager.getProjectRoot().fullPath)
+                .catch(err=>console.error("Error showing '" + ProjectManager.getProjectRoot().fullPath + "' in OS folder:", err));
+        }
+    }
+
+    function openDefaultTerminal() {
+        const entry = ProjectManager.getSelectedItem();
+        if (entry && entry.fullPath) {
+            NodeUtils.openNativeTerminal(entry.fullPath);
+        } else {
+            NodeUtils.openNativeTerminal(ProjectManager.getProjectRoot().fullPath);
+        }
+    }
+
+    function openPowerShell() {
+        const entry = ProjectManager.getSelectedItem();
+        if (entry && entry.fullPath) {
+            NodeUtils.openNativeTerminal(entry.fullPath, true);
+        } else {
+            NodeUtils.openNativeTerminal(ProjectManager.getProjectRoot().fullPath, true);
+        }
+    }
+
+    function openDefaultApp() {
+        const entry = ProjectManager.getSelectedItem();
+        if (entry && entry.fullPath) {
+            NodeUtils.openInDefaultApp(entry.fullPath);
+        } else {
+            NodeUtils.openInDefaultApp(ProjectManager.getProjectRoot().fullPath);
         }
     }
 
@@ -1981,10 +2020,13 @@ define(function (require, exports, module) {
         _isReloading = true;
 
         return CommandManager.execute(Commands.FILE_CLOSE_ALL, { promptOnly: true }).done(function () {
+            exitWaitPromises = [];
             // Give everyone a chance to save their state - but don't let any problems block
             // us from quitting
             try {
-                ProjectManager.trigger("beforeAppClose");
+                // if someone wats to do any deferred tasks, they should add
+                // their promise to the wait promises list.
+                ProjectManager.trigger("beforeAppClose", exitWaitPromises);
             } catch (ex) {
                 console.error(ex);
             }
@@ -2002,7 +2044,8 @@ define(function (require, exports, module) {
 
             // Defer for a more successful reload - issue #11539
             window.setTimeout(function () {
-                raceAgainstTime(window.PhStore.flushDB()) // wither wait for flush or time this out
+                exitWaitPromises.push(window.PhStore.flushDB());
+                raceAgainstTime(Promise.all(exitWaitPromises)) // wither wait for flush or time this out
                     .finally(()=>{
                         raceAgainstTime(_safeNodeTerminate(), 4000)
                             .finally(()=>{
@@ -2175,7 +2218,8 @@ define(function (require, exports, module) {
             event.preventDefault();
             _handleWindowGoingAway(null, closeSuccess=>{
                 console.log('close success: ', closeSuccess);
-                raceAgainstTime(_safeFlushDB())
+                exitWaitPromises.push(_safeFlushDB());
+                raceAgainstTime(Promise.all(exitWaitPromises))
                     .finally(()=>{
                         raceAgainstTime(_safeNodeTerminate())
                             .finally(()=>{
@@ -2251,11 +2295,13 @@ define(function (require, exports, module) {
     exports._parseDecoratedPath = _parseDecoratedPath;
 
     // Set some command strings
-    var quitString  = Strings.CMD_QUIT,
-        showInOS    = Strings.CMD_SHOW_IN_OS;
+    let quitString  = Strings.CMD_QUIT,
+        showInOS    = Strings.CMD_SHOW_IN_FILE_MANAGER,
+        defaultTerminal    = Strings.CMD_OPEN_IN_TERMINAL_DO_NOT_TRANSLATE;
     if (brackets.platform === "win") {
         quitString  = Strings.CMD_EXIT;
         showInOS    = Strings.CMD_SHOW_IN_EXPLORER;
+        defaultTerminal    = Strings.CMD_OPEN_IN_CMD;
     } else if (brackets.platform === "mac") {
         showInOS    = Strings.CMD_SHOW_IN_FINDER;
     }
@@ -2304,6 +2350,11 @@ define(function (require, exports, module) {
 
     // Special Commands
     CommandManager.register(showInOS,                                Commands.NAVIGATE_SHOW_IN_OS,            handleShowInOS);
+    CommandManager.register(defaultTerminal,                         Commands.NAVIGATE_OPEN_IN_TERMINAL,      openDefaultTerminal);
+    if (brackets.platform === "win") {
+        CommandManager.register(Strings.CMD_OPEN_IN_POWER_SHELL,     Commands.NAVIGATE_OPEN_IN_POWERSHELL,    openPowerShell);
+    }
+    CommandManager.register(Strings.CMD_OPEN_IN_DEFAULT_APP,         Commands.NAVIGATE_OPEN_IN_DEFAULT_APP,   openDefaultApp);
     CommandManager.register(Strings.CMD_NEW_BRACKETS_WINDOW,         Commands.FILE_NEW_WINDOW,                handleFileNewWindow);
     CommandManager.register(quitString,                              Commands.FILE_QUIT,                      handleFileCloseWindow);
     CommandManager.register(Strings.CMD_SHOW_IN_TREE,                Commands.NAVIGATE_SHOW_IN_FILE_TREE,     handleShowInTree);

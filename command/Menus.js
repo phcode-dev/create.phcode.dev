@@ -76,6 +76,14 @@ define(function (require, exports, module) {
     };
 
     /**
+     * Brackets well known submenus
+     * @enum {string}
+     */
+    let SubMenuIds = {
+        GIT_SUB_MENU: "git-submenu"
+    };
+
+    /**
      * Event triggered before the context menu opens.
      * @event EVENT_BEFORE_CONTEXT_MENU_OPEN
      */
@@ -98,6 +106,24 @@ define(function (require, exports, module) {
      * @event EVENT_BEFORE_SUB_MENU_CLOSE
      */
     const EVENT_BEFORE_SUB_MENU_CLOSE = "beforeSubMenuClose";
+
+    /**
+     * Event triggered when a menu or menu is added
+     * @event EVENT_MENU_ADDED
+     */
+    const EVENT_MENU_ADDED = "menuAdded";
+
+    /**
+     * Event triggered when a menu or submenu is added
+     * @event EVENT_SUB_MENU_ADDED
+     */
+    const EVENT_SUB_MENU_ADDED = "subMenuAdded";
+
+    /**
+     * Event triggered when a menu item is added
+     * @event EVENT_MENU_ITEM_ADDED
+     */
+    const EVENT_MENU_ITEM_ADDED = "menuItemAdded";
 
 
 
@@ -234,6 +260,15 @@ define(function (require, exports, module) {
      */
     function getMenu(id) {
         return menuMap[id];
+    }
+
+    /**
+     * Retrieves the subMenu object for the corresponding id if present.
+     * @param {string} id
+     * @return {Menu}
+     */
+    function getSubMenu(id) {
+        return getContextMenu(id);
     }
 
     /**
@@ -761,6 +796,9 @@ define(function (require, exports, module) {
             menuItem._nameChanged();
         }
 
+        const menuId = self.id;
+        exports.trigger(EVENT_MENU_ITEM_ADDED, menuId, commandID, menuItem);
+
         return menuItem;
     };
 
@@ -909,6 +947,8 @@ define(function (require, exports, module) {
         let $relativeElement = this._getRelativeMenuItem(relativeID, position);
         _insertInList($("li#" + StringUtils.jQueryIdEscape(this.id) + " > ul.dropdown-menu"),
             $menuItem, position, $relativeElement);
+
+        exports.trigger(EVENT_SUB_MENU_ADDED, id, menu);
 
         return menu;
     };
@@ -1302,6 +1342,7 @@ define(function (require, exports, module) {
         PopUpManager.addPopUp($popUp, closeAll, false);
 
         _addAltMenuShortcut(name, id);
+        exports.trigger(EVENT_MENU_ADDED, id, menu);
 
         return menu;
     }
@@ -1713,6 +1754,8 @@ define(function (require, exports, module) {
         });
     });
 
+    EventDispatcher.makeEventDispatcher(exports);
+
     // Deprecated menu ids
     DeprecationWarning.deprecateConstant(ContextMenuIds, "WORKING_SET_MENU", "WORKING_SET_CONTEXT_MENU");
     DeprecationWarning.deprecateConstant(ContextMenuIds, "WORKING_SET_SETTINGS_MENU", "WORKING_SET_CONFIG_MENU");
@@ -1729,6 +1772,7 @@ define(function (require, exports, module) {
     exports.LAST_IN_SECTION = LAST_IN_SECTION;
     exports.DIVIDER = DIVIDER;
     exports.getMenu = getMenu;
+    exports.getSubMenu = getSubMenu;
     exports.getAllMenus = getAllMenus;
     exports.getMenuItem = getMenuItem;
     exports.getContextMenu = getContextMenu;
@@ -1742,9 +1786,13 @@ define(function (require, exports, module) {
     exports.Menu = Menu;
     exports.MenuItem = MenuItem;
     exports.ContextMenu = ContextMenu;
+    exports.SubMenuIds = SubMenuIds;
     // public events
     exports.EVENT_BEFORE_CONTEXT_MENU_OPEN = EVENT_BEFORE_CONTEXT_MENU_OPEN;
     exports.EVENT_BEFORE_CONTEXT_MENU_CLOSE = EVENT_BEFORE_CONTEXT_MENU_CLOSE;
     exports.EVENT_BEFORE_SUB_MENU_OPEN = EVENT_BEFORE_SUB_MENU_OPEN;
     exports.EVENT_BEFORE_SUB_MENU_CLOSE = EVENT_BEFORE_SUB_MENU_CLOSE;
+    exports.EVENT_MENU_ADDED = EVENT_MENU_ADDED;
+    exports.EVENT_SUB_MENU_ADDED = EVENT_SUB_MENU_ADDED;
+    exports.EVENT_MENU_ITEM_ADDED = EVENT_MENU_ITEM_ADDED;
 });

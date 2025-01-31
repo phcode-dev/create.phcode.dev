@@ -719,11 +719,19 @@ define(function (require, exports, module) {
             normalized,
             normalizedDisplay,
             explicitPlatform = keyBinding.platform || platform,
+            explicitBrowserOnly = keyBinding.browserOnly,
+            explicitNativeOnly = keyBinding.nativeOnly,
             targetPlatform,
             command,
             bindingsToDelete = [],
             existing;
 
+        if(Phoenix.isNativeApp && explicitBrowserOnly) {
+            return null;
+        }
+        if(!Phoenix.isNativeApp && explicitNativeOnly) {
+            return null;
+        }
         // For platform: "all", use explicit current platform
         if (explicitPlatform && explicitPlatform !== "all") {
             targetPlatform = explicitPlatform;
@@ -983,12 +991,13 @@ define(function (require, exports, module) {
      * Returns record(s) for valid key binding(s).
      *
      * @param {!string | Command} command - A command ID or command object
-     * @param {{key: string, displayKey:string, platform: string}} keyBindings
+     * @param {{key: string, displayKey:string, platform: string, browserOnly: boolean, nativeOnly:boolean}} keyBindings
      *     A single key binding or an array of keybindings.
      *     In an array of keybinding `platform` property is also available. Example:
      *     "Shift-Cmd-F". Mac and Win key equivalents are automatically
      *     mapped to each other. Use displayKey property to display a different
-     *     string (e.g. "CMD+" instead of "CMD=").
+     *     string (e.g. "CMD+" instead of "CMD="). if browserOnly is true, then the shortcut will only apply in browser
+     *     if nativeOnly is set, the shortcut will only apply in native apps
      * @param {?string} platform The target OS of the keyBindings either
      *     "mac", "win" or "linux". If undefined, all platforms not explicitly
      *     defined will use the key binding.
@@ -1022,7 +1031,7 @@ define(function (require, exports, module) {
             // process platform-specific bindings first
             keyBindings.sort(_sortByPlatform);
 
-            keyBindings.forEach(function addSingleBinding(keyBindingRequest) {
+            keyBindings.forEach(function (keyBindingRequest) {
                 // attempt to add keybinding
                 keyBinding = _addBinding(commandID, keyBindingRequest, {
                     platform: keyBindingRequest.platform,
@@ -1174,13 +1183,20 @@ define(function (require, exports, module) {
         Control: true,
         Meta: true
     };
+    let isCtrlDepressed = false; // flag set to true if the user keeps the ctrl key pressed without releasing
     function _detectTripleCtrlKeyPress(event) {
+        const isCtrlKeyPressStart = !isCtrlDepressed;
+        if (ctrlKeyCodes[event.code] && ctrlKeyCodes[event.key]) {
+            isCtrlDepressed = true;
+        }
         if(PreferencesManager && !PreferencesManager.get(PREF_TRIPLE_CTRL_KEY_PRESS_ENABLED)){
             return false;
         }
         const currentTime = new Date().getTime(); // Get the current time
-        if (ctrlKeyCodes[event.code] && ctrlKeyCodes[event.key] && !event.shiftKey && !event.altKey) {
+        if (ctrlKeyCodes[event.code] && ctrlKeyCodes[event.key] && !event.shiftKey && !event.altKey
+            && isCtrlKeyPressStart) {
             pressCount++;
+            isCtrlDepressed = true;
             if(pressCount === PRESS_ACTIVATE_COUNT && (currentTime - lastCtrlKeyPressTime) <= doublePressInterval) {
                 KeyboardOverlayMode.startOverlayMode();
                 event.stopPropagation();
@@ -1280,6 +1296,15 @@ define(function (require, exports, module) {
         window.document.body.addEventListener(
             "keydown",
             _handleKeyEvent,
+            true
+        );
+        window.document.body.addEventListener(
+            "keyup",
+            (event)=>{
+                if (ctrlKeyCodes[event.code] && ctrlKeyCodes[event.key]) {
+                    isCtrlDepressed = false;
+                }
+            },
             true
         );
         document.body.addEventListener('mousemove', ()=>{

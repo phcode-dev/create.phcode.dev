@@ -46,7 +46,8 @@ define(function (require, exports, module) {
         loggedDataForAudit = new Map();
 
     let isFirstUseDay;
-    let userID;
+    let userID, isPowerUserFn;
+    let cachedIsPowerUser = false;
 
     function _setUserID() {
         const userIDKey = "phoenixUserPseudoID";
@@ -70,9 +71,11 @@ define(function (require, exports, module) {
         dayAfterFirstUse.setUTCDate(firstUseDay.getUTCDate() + 1);
         let today = new Date();
         isFirstUseDay = today < dayAfterFirstUse;
+        if(!isFirstUseDay){
+            setTimeout(_setFirstDayFlag, ONE_DAY);
+        }
     }
     _setFirstDayFlag();
-    setInterval(_setFirstDayFlag, ONE_DAY);
 
     /**
      * This section outlines the properties and methods available in this module
@@ -85,6 +88,7 @@ define(function (require, exports, module) {
      * ### Properties
      * `PLATFORM`, `PROJECT`, `THEMES`, `EXTENSIONS`, `EXTENSIONS`, `UI`, `UI_DIALOG`, `UI_BOTTOM_PANEL`,
      * `UI_SIDE_PANEL`, `LIVE_PREVIEW`, `CODE_HINTS`, `EDITOR`, `SEARCH`, `SHARING`, `PERFORMANCE`, `NEW_PROJECT`
+     * `ERROR`, `USER`, `NODEJS`, `LINT`, `GIT`
      *
      * @typedef EVENT_TYPE
      * @type {Object}
@@ -114,7 +118,8 @@ define(function (require, exports, module) {
         ERROR: "error",
         USER: "user",
         NODEJS: "node",
-        LINT: "lint"
+        LINT: "lint",
+        GIT: "git"
     };
 
     /**
@@ -258,13 +263,20 @@ define(function (require, exports, module) {
      * and paid plans for GA starts at 100,000 USD.
      * @private
      */
-    function init(){
+    function init(initOptions = {}){
         if(initDone || window.testEnvironment){
             return;
         }
         _initGoogleAnalytics();
         _initCoreAnalytics();
         initDone = true;
+        if (initOptions.isPowerUserFn) {
+            isPowerUserFn = initOptions.isPowerUserFn;
+            cachedIsPowerUser = isPowerUserFn();  // only call once to avoid heavy computations repeatedly
+            setInterval(()=>{
+                cachedIsPowerUser = isPowerUserFn();
+            }, ONE_DAY);
+        }
     }
 
     // some events generate too many ga events that ga can't handle. ignore them.
@@ -349,7 +361,10 @@ define(function (require, exports, module) {
      * @type {function}
      */
     function countEvent(eventType, eventCategory, eventSubCategory, count= 1) {
-        if(!isFirstUseDay){
+        if(cachedIsPowerUser){
+            // emit power user metrics too
+            _countEvent(`P-${eventType}`, eventCategory, eventSubCategory, count);
+        } else if(!isFirstUseDay){
             // emit repeat user metrics too
             _countEvent(`R-${eventType}`, eventCategory, eventSubCategory, count);
         }
@@ -377,7 +392,10 @@ define(function (require, exports, module) {
      * @type {function}
      */
     function valueEvent(eventType, eventCategory, eventSubCategory, value) {
-        if(!isFirstUseDay){
+        if(cachedIsPowerUser){
+            // emit power user metrics too
+            _valueEvent(`P-${eventType}`, eventCategory, eventSubCategory, value);
+        } else if(!isFirstUseDay){
             // emit repeat user metrics too
             _valueEvent(`R-${eventType}`, eventCategory, eventSubCategory, value);
         }
@@ -424,6 +442,43 @@ define(function (require, exports, module) {
         valueEvent(EVENT_TYPE.PERFORMANCE, "ms", action, Number(durationMs));
     }
 
+    /**
+     * Get the range name for a given number.
+     *
+     * The function returns the first range that the number fits into, based on predefined ranges:
+     * 0, 10, 25, 50, 100, 250, 500, 1000, 5000, 10000, and "10000+" for numbers exceeding 10000.
+     *
+     * @param {number} number - The number to determine the range for.
+     * @returns {string} The range name that the number belongs to.
+     */
+    function getRangeName(number) {
+        // Define the ranges
+        const ranges = [0, 5, 10, 25, 50, 100, 250, 500, 1000, 5000, 10000];
+
+        // Iterate through the ranges and return the first range that is greater than or equal to the number
+        // small array, linear scan is most efficient than binary search in most cases comparing the overheads and
+        // maintainability
+        for (let i = 0; i < ranges.length; i++) {
+            if (number <= ranges[i]) {
+                return ""+ranges[i];
+            }
+        }
+
+        // If the number exceeds the largest range, return "10000+"
+        return "10000+";
+    }
+
+    /**
+     * A power user is someone who has used Phoenix at least 3 days or 8 hours in the last two weeks
+     * @returns {boolean}
+     */
+    function isPowerUser() {
+        if(!isPowerUserFn) {
+            throw new Error("PowerUser fn is not initialized in Metrics.");
+        }
+        return isPowerUserFn();
+    }
+
     // Define public API
     exports.init               = init;
     exports.setDisabled        = setDisabled;
@@ -434,6 +489,8 @@ define(function (require, exports, module) {
     exports.valueEvent         = valueEvent;
     exports.logPerformanceTime = logPerformanceTime;
     exports.flushMetrics       = flushMetrics;
+    exports.getRangeName       = getRangeName;
+    exports.isPowerUser        = isPowerUser;
     exports.EVENT_TYPE = EVENT_TYPE;
     exports.AUDIT_TYPE_COUNT = AUDIT_TYPE_COUNT;
     exports.AUDIT_TYPE_VALUE = AUDIT_TYPE_VALUE;

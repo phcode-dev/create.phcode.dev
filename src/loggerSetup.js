@@ -18,7 +18,7 @@
  *
  */
 
-/*globals Bugsnag, AppConfig, Phoenix*/
+/*globals Bugsnag, AppConfig*/
 // window.AppConfig comes from appConfig.js built by gulp scripts at build time
 
 (function(){
@@ -32,7 +32,7 @@
         "https://dev.phcode.dev", // dev url
         "https://staging.phcode.dev" // staging url
     ];
-    let isBugsnagLoggableURL = false;
+    let isBugsnagLoggableURL = false; // to test bugsnag in dev builds, set this to true
     for(let loggableURL of loggableURLS){
         if(window.location.href.startsWith(loggableURL)){
             isBugsnagLoggableURL = true;
@@ -98,9 +98,12 @@
             LOCAL_STORAGE_KEYS: {
                 // change these keys in devEnable.html too
                 LOG_TO_CONSOLE_KEY: "logToConsole",
-                LOG_LIVE_PREVIEW: "logLivePreview"
+                LOG_LIVE_PREVIEW: "logLivePreview",
+                // these need not be dev enable for now
+                LOG_GIT: "logGitDebugMode"
             },
             healthDataDisabled: false,
+            logGit: false,
             logLivePreview: false // logLivePreview will be setup below
         },
         livePreview: {
@@ -163,6 +166,8 @@
 
     logger.loggingOptions.logLivePreview = window.isLoggingEnabled(
         logger.loggingOptions.LOCAL_STORAGE_KEYS.LOG_LIVE_PREVIEW);
+    logger.loggingOptions.logGit = window.isLoggingEnabled(
+        logger.loggingOptions.LOCAL_STORAGE_KEYS.LOG_GIT);
 
     function _shouldDiscardError(errors = []) {
         if(!window.Phoenix || !window.Phoenix.VFS){

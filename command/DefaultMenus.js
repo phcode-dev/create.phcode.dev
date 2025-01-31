@@ -42,7 +42,12 @@ define(function (require, exports, module) {
      */
     function _setContextMenuItemsVisible(enabled, items) {
         items.forEach(function (item) {
-            CommandManager.get(item).setEnabled(enabled);
+            const command = CommandManager.get(item);
+            if(command) {
+                // some commands may be only selectively present in browser or in some oses.
+                // Eg. NAVIGATE_OPEN_IN_POWERSHELL is only present in Windows desktop apps
+                command.setEnabled(enabled);
+            }
         });
     }
 
@@ -58,7 +63,9 @@ define(function (require, exports, module) {
                     return err;
                 }
                 _setContextMenuItemsVisible(isPresent, [Commands.FILE_RENAME,
-                    Commands.NAVIGATE_SHOW_IN_FILE_TREE, Commands.NAVIGATE_SHOW_IN_OS]);
+                    Commands.NAVIGATE_SHOW_IN_FILE_TREE, Commands.NAVIGATE_SHOW_IN_OS,
+                    Commands.NAVIGATE_OPEN_IN_TERMINAL, Commands.NAVIGATE_OPEN_IN_POWERSHELL,
+                    Commands.NAVIGATE_OPEN_IN_DEFAULT_APP]);
             });
         }
     }
@@ -297,7 +304,13 @@ define(function (require, exports, module) {
         workingset_cmenu.addMenuItem(Commands.FILE_SAVE);
         workingset_cmenu.addMenuItem(Commands.NAVIGATE_SHOW_IN_FILE_TREE);
         if(Phoenix.isNativeApp){
-            workingset_cmenu.addMenuItem(Commands.NAVIGATE_SHOW_IN_OS);
+            let subMenu = workingset_cmenu.addSubMenu(Strings.CMD_OPEN_IN, Commands.OPEN_IN_SUBMENU_WS);
+            subMenu.addMenuItem(Commands.NAVIGATE_SHOW_IN_OS);
+            subMenu.addMenuItem(Commands.NAVIGATE_OPEN_IN_TERMINAL);
+            if (brackets.platform === "win") {
+                subMenu.addMenuItem(Commands.NAVIGATE_OPEN_IN_POWERSHELL);
+            }
+            subMenu.addMenuItem(Commands.NAVIGATE_OPEN_IN_DEFAULT_APP);
         }
         workingset_cmenu.addMenuDivider();
         workingset_cmenu.addMenuItem(Commands.FILE_COPY);
@@ -331,7 +344,13 @@ define(function (require, exports, module) {
         project_cmenu.addMenuItem(Commands.FILE_NEW);
         project_cmenu.addMenuItem(Commands.FILE_NEW_FOLDER);
         if(Phoenix.isNativeApp){
-            project_cmenu.addMenuItem(Commands.NAVIGATE_SHOW_IN_OS);
+            let subMenu = project_cmenu.addSubMenu(Strings.CMD_OPEN_IN, Commands.OPEN_IN_SUBMENU);
+            subMenu.addMenuItem(Commands.NAVIGATE_SHOW_IN_OS);
+            subMenu.addMenuItem(Commands.NAVIGATE_OPEN_IN_TERMINAL);
+            if (brackets.platform === "win") {
+                subMenu.addMenuItem(Commands.NAVIGATE_OPEN_IN_POWERSHELL);
+            }
+            subMenu.addMenuItem(Commands.NAVIGATE_OPEN_IN_DEFAULT_APP);
         }
         project_cmenu.addMenuDivider();
         project_cmenu.addMenuItem(Commands.FILE_CUT);

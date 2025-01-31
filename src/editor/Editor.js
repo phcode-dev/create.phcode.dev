@@ -1131,6 +1131,17 @@ define(function (require, exports, module) {
     };
 
     /**
+     * Retrieves a single line text
+     * @param {number} lineNumber - The lineNumber to extract text from
+     * @returns {string|null} The text at the given position if within bounds,
+     *                        otherwise `null` if the position is out of range.
+     */
+    Editor.prototype.getLine = function (lineNumber) {
+        const retrievedText = this._codeMirror.getLine(lineNumber);
+        return retrievedText === undefined ? null : retrievedText;
+    };
+
+    /**
      * Retrieves a single character previous to the specified position in the editor in the same line if possible.
      * x|y where `|` is the cursor, will return x
      *
@@ -1480,13 +1491,34 @@ define(function (require, exports, module) {
     };
 
     /**
-     * Clears all mark of the given type. If nothing is given, clears all marks(Don't use this API without types!).
+     * Clears all marks of the given type. If a lineNumbers array is given, only clears marks on those lines.
+     * If no markType or lineNumbers are given, clears all marks (use cautiously).
      * @param {string} [markType] - Optional, if given will only delete marks of that type. Else delete everything.
+     * @param {number[]} [lineNumbers] - Optional, array of line numbers where marks should be cleared.
      */
-    Editor.prototype.clearAllMarks = function (markType) {
+    Editor.prototype.clearAllMarks = function (markType, lineNumbers) {
         const self = this;
+
         self._codeMirror.operation(function () {
             let marks = self.getAllMarks(markType);
+
+            if (lineNumbers && Array.isArray(lineNumbers)) {
+                // Filter marks to only those within the specified line numbers
+                marks = marks.filter(function (mark) {
+                    const range = mark.find(); // Get the range of the mark
+                    if (!range) {
+                        return false;
+                    }
+
+                    const startLine = range.from.line;
+                    const endLine = range.to.line;
+
+                    // Check if the mark overlaps with any of the specified lines
+                    return lineNumbers.some(line => line >= startLine && line <= endLine);
+                });
+            }
+
+            // Clear the filtered marks
             for (let mark of marks) {
                 mark.clear();
             }
@@ -2509,12 +2541,8 @@ define(function (require, exports, module) {
         }
     };
 
-    /**
-     * Renders all registered gutters
-     * @private
-     */
-    Editor.prototype._renderGutters = function () {
-        var languageId = this.document.getLanguage().getId();
+    Editor.prototype._getRegisteredGutters = function () {
+        const languageId = this.document.getLanguage().getId();
 
         function _filterByLanguages(gutter) {
             return !gutter.languages || gutter.languages.indexOf(languageId) > -1;
@@ -2528,19 +2556,26 @@ define(function (require, exports, module) {
             return gutter.name;
         }
 
-        var gutters = registeredGutters.map(_getName),
-            rootElement = this.getRootElement();
-
         // If the line numbers gutter has not been explicitly registered and the CodeMirror lineNumbes option is
         // set to true, we explicitly add the line numbers gutter. This case occurs the first time the editor loads
         // and showLineNumbers is set to true in preferences
+        const gutters = registeredGutters.map(_getName);
         if (gutters.indexOf(LINE_NUMBER_GUTTER) < 0 && this._codeMirror.getOption(cmOptions[SHOW_LINE_NUMBERS])) {
             registeredGutters.push({ name: LINE_NUMBER_GUTTER, priority: LINE_NUMBER_GUTTER_PRIORITY });
         }
 
-        gutters = registeredGutters.sort(_sortByPriority)
+        return  registeredGutters.sort(_sortByPriority)
             .filter(_filterByLanguages)
             .map(_getName);
+    };
+
+    /**
+     * Renders all registered gutters
+     * @private
+     */
+    Editor.prototype._renderGutters = function () {
+        const rootElement = this.getRootElement();
+        const gutters = this._getRegisteredGutters();
 
         this._codeMirror.setOption("gutters", gutters);
         this._codeMirror.refresh();
@@ -2557,6 +2592,8 @@ define(function (require, exports, module) {
      * @param   {number}   lineNumber The line number for the inserted gutter marker
      * @param   {string}   gutterName The name of the gutter
      * @param   {object}   marker     The dom element representing the marker to the inserted in the gutter
+     * @returns {{lineNo : function}}   lineHandle   this can be used to track the gutter line as the line number
+     *                                  changes as the user edits code.
      */
     Editor.prototype.setGutterMarker = function (lineNumber, gutterName, marker) {
         if (!Editor.isGutterRegistered(gutterName)) {
@@ -2564,7 +2601,7 @@ define(function (require, exports, module) {
             return;
         }
 
-        this._codeMirror.setGutterMarker(lineNumber, gutterName, marker);
+        return this._codeMirror.setGutterMarker(lineNumber, gutterName, marker);
     };
 
     /**
@@ -2590,6 +2627,16 @@ define(function (require, exports, module) {
      */
     Editor.prototype.clearGutterMarker = function (lineNumber, gutterName) {
         this.setGutterMarker(lineNumber, gutterName, null);
+    };
+
+    /**
+     * Returns true if this editor has the named gutter activated. gutters are considered active if the gutter is
+     * registered for the language of the file currently shown in the editor.
+     * @param {string} gutterName The name of the gutter to check
+     */
+    Editor.prototype.isGutterActive = function (gutterName) {
+        const gutters = this._getRegisteredGutters();
+        return gutters.includes(gutterName);
     };
 
     /**
