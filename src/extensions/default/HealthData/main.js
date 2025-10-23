@@ -175,19 +175,6 @@ define("HealthDataManager", function (require, exports, module) {
             isPowerUserFn: isPowerUser
         });
         healthDataDisabled = !prefs.get("healthDataTracking");
-        if (healthDataDisabled && !Phoenix.healthTrackingDisabled) {
-            // Phoenix.healthTrackingDisabled is initialized at boot using localStorage.
-            // However, there's a theoretical edge case where the browser may have cleared
-            // localStorage, causing a mismatch between the boot-time flag and the actual
-            // persisted user preference.
-            //
-            // This means we might unintentionally log some metrics during the short window
-            // before the real preference is loaded and applied.
-            //
-            // To track this discrepancy, we emit a one-time metric just before disabling tracking,
-            // so we’re aware of this inconsistency and can address it if needed.
-            Metrics.countEvent(Metrics.PLATFORM, "metricBoot", "disableErr");
-        }
         Metrics.setDisabled(healthDataDisabled);
         SendToAnalytics.sendPlatformMetrics();
         SendToAnalytics.sendThemesMetrics();
@@ -196,29 +183,68 @@ define("HealthDataManager", function (require, exports, module) {
     });
 });
 
-// SPDX-License-Identifier: AGPL-3.0-only
-// Copyright (c) 2021 - present core.ai. All rights reserved.
+/*
+ * Copyright (c) 2021 - present core.ai . All rights reserved.
+ * Original work Copyright (c) 2015 - 2021 Adobe Systems Incorporated. All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ */
 
-/*global*/
+/*global Phoenix*/
 
 define("HealthDataNotification", function (require, exports, module) {
 
-    const PreferencesManager           = brackets.getModule("preferences/PreferencesManager"),
+    var PreferencesManager           = brackets.getModule("preferences/PreferencesManager"),
+        ExtensionInterface           = brackets.getModule("utils/ExtensionInterface"),
         HealthDataPreview            = require("HealthDataPreview"),
         HealthDataPopup              = require("HealthDataPopup");
 
-    // Since we don't have any user accounts or trackable ID to uniquely identify a user on first launch,
-    // we should be ok GDPR wise to delay showing the health data popup. But it was found later to be annoying
-    // and a workflow distraction. So we show the health data popup almost immediately so that the user can
-    // close all the popups in on go.
+    const NEW_PROJECT_EXTENSION_INTERFACE = "Extn.Phoenix.newProject",
+        // Since we don't have any user accounts or trackable ID to uniquely identify a user on first launch,
+        // we should be ok GDPR wise to delay showing the health data popup. But it was found later to be annoying
+        // and a workflow distraction. So we show the health data popup almost immediately so that the user can
+        // close all the popups in on go.
+        POPUP_FIRST_LAUNCH_SHOW_DELAY = 5000;
 
-    _showFirstLaunchPopup();
+    let newProjectExtension;
+    ExtensionInterface.waitAndGetExtensionInterface(NEW_PROJECT_EXTENSION_INTERFACE)
+        .then(interfaceObj => {
+            newProjectExtension = interfaceObj;
+            interfaceObj.on(interfaceObj.EVENT_NEW_PROJECT_DIALOGUE_CLOSED, ()=>{
+                setTimeout(_showFirstLaunchPopup, POPUP_FIRST_LAUNCH_SHOW_DELAY);
+            });
+        });
 
     function handleHealthDataStatistics() {
         HealthDataPreview.previewHealthData();
     }
 
+    let popupShownInThisSession = false;
     function _showFirstLaunchPopup() {
+        // call this only after newProjectExtn interface is available
+        // Check whether the notification dialog should be shown. It will be shown only one time.
+        if(popupShownInThisSession){
+            return;
+        }
+        popupShownInThisSession = true;
+        newProjectExtension.off(newProjectExtension.EVENT_NEW_PROJECT_DIALOGUE_CLOSED, _showFirstLaunchPopup);
         if(!window.testEnvironment){
             const alreadyShown = PreferencesManager.getViewState("healthDataNotificationShown");
             const prefs = PreferencesManager.getExtensionPrefs("healthData");
@@ -318,10 +344,6 @@ define("HealthDataPreview", function (require, exports, module) {
 	            <input type="checkbox" data-target="hdPref" {{#hdPref}}checked{{/hdPref}} />
 	            {{Strings.HEALTH_DATA_DO_TRACK}}
 	        </label>
-			<div style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-left: 3px solid #aaa; font-size: 13px; color: #666; margin: 8px 0;">
-				<span style="flex-shrink: 0;">ℹ️</span>
-				<span>{{Strings.HEALTH_DATA_PREVIEW_NECESSARY}}</span>
-			</div>
     	</div>
 	    <div class="dialog-message preview-content-container">
 	        <p class="preview-content">{{{content}}}</p>
@@ -411,15 +433,13 @@ define("HealthDataPreview", function (require, exports, module) {
  *
  */
 
-/*global AppConfig*/
+/*global Phoenix*/
 define("SendToAnalytics", function (require, exports, module) {
     const Metrics = brackets.getModule("utils/Metrics"),
         PreferencesManager  = brackets.getModule("preferences/PreferencesManager"),
         PerfUtils           = brackets.getModule("utils/PerfUtils"),
         NodeUtils           = brackets.getModule("utils/NodeUtils"),
         themesPref          = PreferencesManager.getExtensionPrefs("themes");
-
-    const BugsnagPerformance = window.BugsnagPerformance;
 
     const PLATFORM = Metrics.EVENT_TYPE.PLATFORM,
         PERFORMANCE = Metrics.EVENT_TYPE.PERFORMANCE,
@@ -525,34 +545,17 @@ define("SendToAnalytics", function (require, exports, module) {
         _sendStorageMetrics();
     }
 
-    let bugsnagPerformanceInited = false;
-    function _initBugsnagPerformance() {
-        bugsnagPerformanceInited = true;
-        BugsnagPerformance.start({
-            apiKey: '94ef94f4daf871ca0f2fc912c6d4764d',
-            appVersion: AppConfig.version,
-            releaseStage: window.__TAURI__ ?
-                `tauri-${AppConfig.config.bugsnagEnv}-${Phoenix.platform}` : AppConfig.config.bugsnagEnv,
-            autoInstrumentRouteChanges: false,
-            autoInstrumentNetworkRequests: false,
-            autoInstrumentFullPageLoads: false
-        });
-    }
-
     function _bugsnagPerformance(key, valueMs) {
-        if(Metrics.isDisabled() || !BugsnagPerformance || Phoenix.isTestWindow){
+        if(Metrics.isDisabled() || !window.BugsnagPerformance || Phoenix.isTestWindow){
             return;
-        }
-        if(!bugsnagPerformanceInited) {
-            _initBugsnagPerformance();
         }
         let activityStartTime = new Date();
         let activityEndTime = new Date(activityStartTime.getTime() + valueMs);
-        BugsnagPerformance
+        window.BugsnagPerformance
             .startSpan(key, { startTime: activityStartTime })
             .end(activityEndTime);
     }
-
+    
     // Performance
     function sendStartupPerformanceMetrics() {
         const healthReport = PerfUtils.getHealthReport();

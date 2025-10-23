@@ -393,10 +393,10 @@ define(function (require, exports, module) {
     }
 
     /** Removes the current-match highlight, leaving all matches marked in the generic highlight style */
-    function clearCurrentMatchHighlight(editor, state) {
+    function clearCurrentMatchHighlight(cm, state) {
         if (state.markedCurrent) {
             state.markedCurrent.clear();
-            ScrollTrackMarkers._markCurrent(-1, editor);
+            ScrollTrackMarkers.markCurrent(-1);
         }
     }
 
@@ -405,7 +405,7 @@ define(function (require, exports, module) {
         const pos = editor.getCursorPos(false, "start");
         cm.operation(function () {
             var state = getSearchState(cm);
-            clearCurrentMatchHighlight(editor, state);
+            clearCurrentMatchHighlight(cm, state);
 
             let curIndex = editor.indexFromPos(pos);
             curIndex = curIndex >= 1 ? curIndex-- : 0;
@@ -424,7 +424,7 @@ define(function (require, exports, module) {
                         {from: thisMatch.start, to: thisMatch.end}, false);
                     // Update current-tickmark indicator - only if highlighting enabled (disabled if FIND_HIGHLIGHT_MAX threshold hit)
                     if (state.marked.length) {
-                        ScrollTrackMarkers._markCurrent(state.matchIndex, editor);  // _updateFindBarWithMatchInfo() has updated this index
+                        ScrollTrackMarkers.markCurrent(state.matchIndex);  // _updateFindBarWithMatchInfo() has updated this index
                     }
                 }
 
@@ -454,7 +454,7 @@ define(function (require, exports, module) {
         var cm = editor._codeMirror;
         cm.operation(function () {
             var state = getSearchState(cm);
-            clearCurrentMatchHighlight(editor, state);
+            clearCurrentMatchHighlight(cm, state);
 
             var nextMatch = _getNextMatch(editor, searchBackwards, pos);
             if (nextMatch) {
@@ -464,7 +464,7 @@ define(function (require, exports, module) {
                                                 {from: nextMatch.start, to: nextMatch.end}, searchBackwards);
                     // Update current-tickmark indicator - only if highlighting enabled (disabled if FIND_HIGHLIGHT_MAX threshold hit)
                     if (state.marked.length) {
-                        ScrollTrackMarkers._markCurrent(state.matchIndex, editor);  // _updateFindBarWithMatchInfo() has updated this index
+                        ScrollTrackMarkers.markCurrent(state.matchIndex);  // _updateFindBarWithMatchInfo() has updated this index
                     }
                 }
 
@@ -485,25 +485,23 @@ define(function (require, exports, module) {
     }
 
     /** Clears all match highlights, including the current match */
-    function clearHighlights(editor, state) {
-        const cm = editor._codeMirror;
+    function clearHighlights(cm, state) {
         cm.operation(function () {
             state.marked.forEach(function (markedRange) {
                 markedRange.clear();
             });
-            clearCurrentMatchHighlight(editor, state);
+            clearCurrentMatchHighlight(cm, state);
         });
         state.marked.length = 0;
         state.markedCurrent = null;
 
-        ScrollTrackMarkers.clear(editor);
+        ScrollTrackMarkers.clear();
 
         state.resultSet = [];
         state.matchIndex = -1;
     }
 
-    function clearSearch(editor) {
-        const cm = editor._codeMirror;
+    function clearSearch(cm) {
         cm.operation(function () {
             var state = getSearchState(cm);
             if (!state.parsedQuery) {
@@ -511,7 +509,7 @@ define(function (require, exports, module) {
             }
             setQueryInfo(state, null);
 
-            clearHighlights(editor, state);
+            clearHighlights(cm, state);
         });
     }
 
@@ -522,6 +520,8 @@ define(function (require, exports, module) {
         } else {
             $(editor.getRootElement()).removeClass("find-highlighting");
         }
+
+        ScrollTrackMarkers.setVisible(editor, enabled);
     }
 
     /**
@@ -544,7 +544,7 @@ define(function (require, exports, module) {
         cm.operation(function () {
             // Clear old highlights
             if (state.marked) {
-                clearHighlights(editor, state);
+                clearHighlights(cm, state);
             }
 
             if (!state.parsedQuery) {
@@ -577,9 +577,7 @@ define(function (require, exports, module) {
                         return result.from;
                     });
 
-                    ScrollTrackMarkers.addTickmarks(editor, scrollTrackPositions, {
-                        dontMerge: true
-                    });
+                    ScrollTrackMarkers.addTickmarks(editor, scrollTrackPositions);
                 }
 
                 // Here we only update find bar with no result. In the case of a match
@@ -678,7 +676,7 @@ define(function (require, exports, module) {
             .on("close.FindReplace", function (e) {
                 editor.lastParsedQuery = state.parsedQuery;
                 // Clear highlights but leave search state in place so Find Next/Previous work after closing
-                clearHighlights(editor, state);
+                clearHighlights(cm, state);
 
                 // Dispose highlighting UI (important to restore normal selection color as soon as focus goes back to the editor)
                 toggleHighlighting(editor, false);
@@ -772,7 +770,7 @@ define(function (require, exports, module) {
 
         if (editor) {
             // Create a new instance of the search bar UI
-            clearSearch(editor);
+            clearSearch(editor._codeMirror);
             doSearch(editor, false);
         }
     }

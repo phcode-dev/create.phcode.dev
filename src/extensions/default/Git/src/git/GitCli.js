@@ -797,8 +797,6 @@ define(function (require, exports) {
         });
     }
 
-    // this function right now is not being used anywhere,
-    // but leaving it here (we might need it in the future)
     function hasStatusChanged() {
         const prevStatus = lastGitStatusResults;
         return status().then(function (currentStatus) {

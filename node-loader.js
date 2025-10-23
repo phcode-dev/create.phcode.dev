@@ -18,13 +18,9 @@
  *
  */
 
-/*global fs, logger*/
+/*global Phoenix, fs, logger*/
 
 function nodeLoader() {
-    const KernalModeTrust = window.KernalModeTrust;
-    if(!KernalModeTrust){
-        throw new Error("KernalModeTrust is not defined. Cannot boot nodeLoader without trust ring");
-    }
     const nodeLoadstartTime = Date.now();
     const phcodeExecHandlerMap = {};
     const nodeConnectorIDMap = {};
@@ -725,7 +721,6 @@ function nodeLoader() {
                         fs.setNodeWSEndpoint(message.phoenixFSURL);
                         fs.forceUseNodeWSEndpoint(true);
                         setNodeWSEndpoint(message.phoenixNodeURL);
-                        KernalModeTrust.localAutoAuthURL = message.autoAuthURL;
                         window.isNodeReady = true;
                         resolve(message);
                         // node is designed such that it is not required at boot time to lower startup time.

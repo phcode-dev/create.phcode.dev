@@ -245,7 +245,7 @@ define(function (require, exports, module) {
     const CMD_ENABLE_QUICK_VIEW       = "view.enableQuickView",
         QUICK_VIEW_EDITOR_MARKER = 'quickViewMark',
         // Time (ms) mouse must remain over a provider's matched text before popover appears
-        HOVER_DELAY                 = 350,
+        HOVER_DELAY                 = 500,
         // Pointer height, used to shift popover above pointer (plus a little bit of space)
         POINTER_HEIGHT              = 10,
         POPOVER_HORZ_MARGIN         =  5;   // Horizontal margin
@@ -300,6 +300,7 @@ define(function (require, exports, module) {
                 EditorManager.getActiveEditor().focus();
             }
         }
+        showPreviewQueued = false;
         mouseInPreviewContainer = false;
         unlockQuickView();
         window.clearTimeout(popoverState.hoverTimer);
@@ -545,6 +546,8 @@ define(function (require, exports, module) {
         return false;
     }
 
+    let showPreviewQueued = false;
+
     function processMouseMove() {
         animationRequest = null;
 
@@ -576,20 +579,24 @@ define(function (require, exports, module) {
             }
         }
 
-        popoverState = popoverState || {};
+        if(!showPreviewQueued){
+            // Initialize popoverState
+            showPreviewQueued = true;
+            popoverState = popoverState || {};
 
-        // Set timer to scan and show. This will get cancelled (in hidePreview())
-        // if mouse movement rendered this popover inapplicable before timer fires.
-        // When showing "immediately", still use setTimeout() to make this async
-        // so we return from this mousemove event handler ASAP.
-        clearTimeout(popoverState.hoverTimer);
-        popoverState.hoverTimer = window.setTimeout(function () {
-            if(!mouseInPreviewContainer && !quickViewLocked){
-                hidePreview();
-                popoverState = {};
-                showPreview(editor);
-            }
-        }, HOVER_DELAY);
+            // Set timer to scan and show. This will get cancelled (in hidePreview())
+            // if mouse movement rendered this popover inapplicable before timer fires.
+            // When showing "immediately", still use setTimeout() to make this async
+            // so we return from this mousemove event handler ASAP.
+            popoverState.hoverTimer = window.setTimeout(function () {
+                showPreviewQueued = false;
+                if(!mouseInPreviewContainer && !quickViewLocked){
+                    hidePreview();
+                    popoverState = {};
+                    showPreview(editor);
+                }
+            }, HOVER_DELAY);
+        }
     }
 
     function handleMouseMove(event) {

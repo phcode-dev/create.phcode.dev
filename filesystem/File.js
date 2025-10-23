@@ -94,12 +94,8 @@ define(function (require, exports, module) {
     /**
      * Read a file.
      *
-     * @param {Object} options
-     * @param {string} [options.encoding] 'one of format supported here:
-     *        https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder/encoding'
-     * @param {boolean} [options.ignoreFileSizeLimits] by default max file size that can be read is 16MB.
-     * @param {boolean} [options.doNotCache] will not cache if enabled. Auto-enabled if ignoreFileSizeLimits = true
-     *
+     * @param {Object=} options properties \{encoding: 'one of format supported here:
+     * https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder/encoding'}
      * @param {function (?string, string=, FileSystemStats=)} callback Callback that is passed the
      *              FileSystemError string or the file's contents and its stats.
      */
@@ -110,9 +106,6 @@ define(function (require, exports, module) {
             options.encoding = this._encoding;
         }
         options.encoding = options.encoding || this._encoding || "utf8";
-        if(options.ignoreFileSizeLimits) {
-            options.doNotCache = true;
-        }
 
         // We don't need to check isWatched() here because contents are only saved
         // for watched files. Note that we need to explicitly test this._contents

@@ -38,16 +38,15 @@
 define(function (require, exports, module) {
 
 
-    var AppInit             = require("utils/AppInit"),
-        ProjectManager      = require("project/ProjectManager"),
-        PreferencesManager  = require("preferences/PreferencesManager"),
-        WorkingSetView      = require("project/WorkingSetView"),
-        MainViewManager     = require("view/MainViewManager"),
-        CommandManager      = require("command/CommandManager"),
-        Commands            = require("command/Commands"),
-        Strings             = require("strings"),
-        Resizer             = require("utils/Resizer"),
-        _                   = require("thirdparty/lodash");
+    var AppInit         = require("utils/AppInit"),
+        ProjectManager  = require("project/ProjectManager"),
+        WorkingSetView  = require("project/WorkingSetView"),
+        MainViewManager = require("view/MainViewManager"),
+        CommandManager  = require("command/CommandManager"),
+        Commands        = require("command/Commands"),
+        Strings         = require("strings"),
+        Resizer         = require("utils/Resizer"),
+        _               = require("thirdparty/lodash");
 
     // These vars are initialized by the htmlReady handler
     // below since they refer to DOM elements
@@ -59,9 +58,7 @@ define(function (require, exports, module) {
 
     var _cmdSplitNone,
         _cmdSplitVertical,
-        _cmdSplitHorizontal,
-        _cmdToggleWorkingSet,
-        _cmdToggleFileTabs;
+        _cmdSplitHorizontal;
 
     /**
      * @private
@@ -181,30 +178,6 @@ define(function (require, exports, module) {
         MainViewManager.setLayoutScheme(2, 1);
     }
 
-    /**
-     * Handle Toggle Working Set Command
-     * @private
-     */
-    function _handleToggleWorkingSet() {
-        const isCurrentlyShown = PreferencesManager.get("showWorkingSet");
-        PreferencesManager.set("showWorkingSet", !isCurrentlyShown);
-        CommandManager.get(Commands.CMD_TOGGLE_SHOW_WORKING_SET).setChecked(!isCurrentlyShown);
-    }
-
-    /**
-     * Handle Toggle File Tabs Command
-     * @private
-     */
-    function _handleToggleFileTabs() {
-        const prefs = PreferencesManager.get("tabBar.options");
-        const willBeShown = !prefs.showTabBar;
-        PreferencesManager.set("tabBar.options", {
-            showTabBar: willBeShown,
-            numberOfTabs: prefs.numberOfTabs
-        });
-        CommandManager.get(Commands.CMD_TOGGLE_SHOW_FILE_TABS).setChecked(willBeShown);
-    }
-
     // Initialize items dependent on HTML DOM
     AppInit.htmlReady(function () {
         $sidebar                  = $("#sidebar");
@@ -212,12 +185,6 @@ define(function (require, exports, module) {
         $projectTitle             = $sidebar.find("#project-title");
         $projectFilesContainer    = $sidebar.find("#project-files-container");
         $workingSetViewsContainer = $sidebar.find("#working-set-list-container");
-
-        // apply working set visibility immediately
-        // this is needed because otherwise when the working set is hidden there is a flashing issue
-        if (!PreferencesManager.get("showWorkingSet")) {
-            $workingSetViewsContainer.addClass("working-set-hidden");
-        }
 
         // init
         $sidebar.on("panelResizeStart", function (evt, width) {
@@ -277,37 +244,6 @@ define(function (require, exports, module) {
 
         // Tooltips
         $splitViewMenu.attr("title", Strings.GEAR_MENU_TOOLTIP);
-
-        _cmdToggleWorkingSet.setChecked(PreferencesManager.get("showWorkingSet"));
-        _cmdToggleFileTabs.setChecked(PreferencesManager.get("tabBar.options").showTabBar);
-
-        // to listen for tab bar preference changes from the preferences file
-        // because if user toggles the state of tab bar visibility either from the view menu or the preferences file
-        // we need to update the checked state here too
-        PreferencesManager.on("change", "tabBar.options", function () {
-            const prefs = PreferencesManager.get("tabBar.options");
-            _cmdToggleFileTabs.setChecked(prefs.showTabBar);
-        });
-
-        // Define the preference to decide whether to show the working set or not
-        PreferencesManager.definePreference("showWorkingSet", "boolean", true, {
-            description: Strings.DESCRIPTION_SHOW_WORKING_SET
-        })
-            .on("change", function () {
-                // 'working-set-list-container' is the id of the main working set element which we need to hide/show
-                const $workingSet = $(document.getElementById("working-set-list-container"));
-                const getPref = PreferencesManager.get("showWorkingSet");
-
-                if(getPref) {
-                    // refer to brackets.less file for styles
-                    $workingSet.removeClass("working-set-hidden");
-                } else {
-                    $workingSet.addClass("working-set-hidden");
-                }
-
-                // update the menu item checked state to match the preference
-                _cmdToggleWorkingSet.setChecked(getPref);
-            });
     });
 
     ProjectManager.on("projectOpen", _updateProjectTitle);
@@ -319,8 +255,6 @@ define(function (require, exports, module) {
     _cmdSplitNone       = CommandManager.register(Strings.CMD_SPLITVIEW_NONE,       Commands.CMD_SPLITVIEW_NONE,       _handleSplitViewNone);
     _cmdSplitVertical   = CommandManager.register(Strings.CMD_SPLITVIEW_VERTICAL,   Commands.CMD_SPLITVIEW_VERTICAL,   _handleSplitViewVertical);
     _cmdSplitHorizontal = CommandManager.register(Strings.CMD_SPLITVIEW_HORIZONTAL, Commands.CMD_SPLITVIEW_HORIZONTAL, _handleSplitViewHorizontal);
-    _cmdToggleWorkingSet = CommandManager.register(Strings.CMD_TOGGLE_SHOW_WORKING_SET, Commands.CMD_TOGGLE_SHOW_WORKING_SET, _handleToggleWorkingSet);
-    _cmdToggleFileTabs = CommandManager.register(Strings.CMD_TOGGLE_SHOW_FILE_TABS, Commands.CMD_TOGGLE_SHOW_FILE_TABS, _handleToggleFileTabs);
 
     CommandManager.register(Strings.CMD_TOGGLE_SIDEBAR, Commands.VIEW_HIDE_SIDEBAR, toggle);
     CommandManager.register(Strings.CMD_SHOW_SIDEBAR, Commands.SHOW_SIDEBAR, show);

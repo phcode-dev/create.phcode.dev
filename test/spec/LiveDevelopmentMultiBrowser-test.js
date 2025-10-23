@@ -25,21 +25,20 @@ define(function (require, exports, module) {
 
 
     const SpecRunnerUtils = require("spec/SpecRunnerUtils"),
-        KeyEvent = require("utils/KeyEvent"),
-        StringUtils = require("utils/StringUtils"),
-        Strings = require("strings");
+        KeyEvent                = require("utils/KeyEvent"),
+        StringUtils      = require("utils/StringUtils");
 
     describe("livepreview:MultiBrowser Live Preview", function () {
 
         async function _waitForIframeSrc(name) {
-            await awaitsFor(() => {
+            await awaitsFor(()=>{
                 let outerIFrame = testWindow.document.getElementById("panel-live-preview-frame");
                 let srcURL = new URL(outerIFrame.src);
                 return srcURL.pathname.endsWith(name) === true;
             }, "waiting for name- " + name);
         }
 
-        if (Phoenix.isTestWindowPlaywright && !Phoenix.browser.desktop.isChromeBased) {
+        if(Phoenix.isTestWindowPlaywright && !Phoenix.browser.desktop.isChromeBased) {
             it("All tests requiring virtual server is disabled in playwright/firefox/safari", async function () {
                 // we dont spawn virtual server in iframe playwright linux/safari as playwright linux/safari fails badly
                 // we dont need virtual server for tests except for live preview and custom extension load tests,
@@ -93,38 +92,25 @@ define(function (require, exports, module) {
                 // In tauri, we use node server, so this limitation doesn't apply in tauri, and we stick to iframes.
                 const useWindowInsteadOfIframe = (Phoenix.browser.desktop.isFirefox && !window.__TAURI__);
                 testWindow = await SpecRunnerUtils.createTestWindowAndRun({
-                    forceReload: false, useWindowInsteadOfIframe
-                });
+                    forceReload: false, useWindowInsteadOfIframe});
                 brackets = testWindow.brackets;
                 DocumentManager = brackets.test.DocumentManager;
                 LiveDevMultiBrowser = brackets.test.LiveDevMultiBrowser;
                 LiveDevProtocol = brackets.test.LiveDevProtocol;
-                CommandManager = brackets.test.CommandManager;
-                Commands = brackets.test.Commands;
-                EditorManager = brackets.test.EditorManager;
-                WorkspaceManager = brackets.test.WorkspaceManager;
-                BeautificationManager = brackets.test.BeautificationManager;
-                PreferencesManager = brackets.test.PreferencesManager;
-                NativeApp = brackets.test.NativeApp;
-                Dialogs = brackets.test.Dialogs;
-                MainViewManager = brackets.test.MainViewManager;
+                CommandManager      = brackets.test.CommandManager;
+                Commands            = brackets.test.Commands;
+                EditorManager       = brackets.test.EditorManager;
+                WorkspaceManager    = brackets.test.WorkspaceManager;
+                BeautificationManager       = brackets.test.BeautificationManager;
+                PreferencesManager       = brackets.test.PreferencesManager;
+                NativeApp       = brackets.test.NativeApp;
+                Dialogs       = brackets.test.Dialogs;
+                MainViewManager       = brackets.test.MainViewManager;
                 savedNativeAppOpener = NativeApp.openURLInDefaultBrowser;
 
                 await SpecRunnerUtils.loadProjectInTestWindow(testFolder);
-                await SpecRunnerUtils.deletePathAsync(testFolder + "/.phcode.json", true);
-
-                // Disable edit mode features for core live preview tests
-                // This ensures tests focus on basic live preview functionality without
-                // edit mode interference (hover/click handlers)
-                if (LiveDevMultiBrowser && LiveDevMultiBrowser.config) {
-                    LiveDevMultiBrowser.config.isProUser = false;
-                    // Also update the remote browser configuration
-                    if (LiveDevMultiBrowser.updateConfig) {
-                        LiveDevMultiBrowser.updateConfig(JSON.stringify(LiveDevMultiBrowser.config));
-                    }
-                }
-
-                if (!WorkspaceManager.isPanelVisible('live-preview-panel')) {
+                await SpecRunnerUtils.deletePathAsync(testFolder+"/.phcode.json", true);
+                if(!WorkspaceManager.isPanelVisible('live-preview-panel')){
                     await awaitsForDone(CommandManager.execute(Commands.FILE_LIVE_FILE_PREVIEW));
                 }
             }
@@ -136,9 +122,9 @@ define(function (require, exports, module) {
             testWindow = null;
             brackets = null;
             LiveDevMultiBrowser = null;
-            CommandManager = null;
-            Commands = null;
-            EditorManager = null;
+            CommandManager      = null;
+            Commands            = null;
+            EditorManager       = null;
             MainViewManager = null;
             savedNativeAppOpener = null;
             Dialogs = null;
@@ -172,14 +158,6 @@ define(function (require, exports, module) {
         }
 
         async function waitsForLiveDevelopmentToOpen() {
-            // Ensure edit mode is disabled before opening live preview
-            if (LiveDevMultiBrowser && LiveDevMultiBrowser.config) {
-                LiveDevMultiBrowser.config.isProUser = false;
-                // Update the remote browser configuration to sync the disabled state
-                if (LiveDevMultiBrowser.updateConfig) {
-                    LiveDevMultiBrowser.updateConfig(JSON.stringify(LiveDevMultiBrowser.config));
-                }
-            }
             LiveDevMultiBrowser.open();
             await waitsForLiveDevelopmentFileSwitch();
         }
@@ -269,8 +247,8 @@ define(function (require, exports, module) {
             await awaitsFor(
                 function isArabicTextProperlyRendered() {
                     LiveDevProtocol.evaluate(`document.getElementById('arabic-text').textContent`)
-                        .done((response) => {
-                            result = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            result = JSON.parse(response.result||"");
                         });
                     return result === " 1 يناير 2021 بواسطة ";
                 },
@@ -283,8 +261,8 @@ define(function (require, exports, module) {
 
         function _isRelatedStyleSheet(liveDoc, fileName) {
             let relatedSheets = Object.keys(liveDoc.getRelated().stylesheets);
-            for (let relatedPath of relatedSheets) {
-                if (relatedPath.endsWith(fileName)) {
+            for(let relatedPath of relatedSheets){
+                if(relatedPath.endsWith(fileName)) {
                     return true;
                 }
             }
@@ -299,9 +277,9 @@ define(function (require, exports, module) {
 
             liveDoc = LiveDevMultiBrowser.getCurrentLiveDoc();
 
-            let curDoc = DocumentManager.getCurrentDocument();
+            let curDoc =  DocumentManager.getCurrentDocument();
 
-            curDoc.replaceRange('<link href="blank.css" rel="stylesheet">\n', { line: 8, ch: 0 });
+            curDoc.replaceRange('<link href="blank.css" rel="stylesheet">\n', {line: 8, ch: 0});
 
             await awaitsFor(
                 function relatedDocsReceived() {
@@ -349,7 +327,7 @@ define(function (require, exports, module) {
 
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.css"]),
                 "SpecRunnerUtils.openProjectFiles simple1.css");
-            curDoc = DocumentManager.getCurrentDocument();
+            curDoc =  DocumentManager.getCurrentDocument();
             localText = curDoc.getText();
             localText += styleTextAdd;
             curDoc.setText(localText);
@@ -358,37 +336,6 @@ define(function (require, exports, module) {
             browserText = browserText.replace(/url\('http:\/\/127\.0\.0\.1:\d+\/import1\.css'\);/, "url('import1.css');");
 
             expect(fixSpaces(browserText).includes(fixSpaces(styleTextAdd))).toBeTrue();
-            await endPreviewSession();
-        }, 30000);
-
-        it("should show error banner if there is syntax error in html", async function () {
-            let savedText,
-                curDoc;
-
-            await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
-                "SpecRunnerUtils.openProjectFiles simple1.html");
-
-            await waitsForLiveDevelopmentToOpen();
-
-            curDoc = DocumentManager.getCurrentDocument();
-            savedText = curDoc.getText();
-            // split file in half to and add syntax error then see if error banner shows up
-            const mid = Math.ceil(savedText.length / 2);
-            curDoc.setText(savedText.slice(0, mid));
-
-            await awaitsFor(
-                function isBannerVisible() {
-                    return testWindow.$(".live-preview-status-overlay").is(":visible") &&
-                        testWindow.$(".live-preview-status-overlay").text()
-                            .includes(Strings.LIVE_DEV_STATUS_TIP_SYNC_ERROR);
-                },
-                "waiting for syntax error banner to appear",
-                5000,
-                50
-            );
-
-            curDoc.setText(savedText);
-
             await endPreviewSession();
         }, 30000);
 
@@ -405,7 +352,7 @@ define(function (require, exports, module) {
 
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["sub/test.css"]),
                 "SpecRunnerUtils.openProjectFiles simple1.css");
-            curDoc = DocumentManager.getCurrentDocument();
+            curDoc =  DocumentManager.getCurrentDocument();
             localText = curDoc.getText();
             localText += "\n .testClass { background-color:#090; }\n";
             curDoc.setText(localText);
@@ -436,14 +383,14 @@ define(function (require, exports, module) {
                 50
             );
 
-            let curDoc = DocumentManager.getCurrentDocument();
+            let curDoc =  DocumentManager.getCurrentDocument();
             curDoc.replaceRange(editText, location);
             let result;
             await awaitsFor(
                 function isTextChanged() {
                     LiveDevProtocol.evaluate(`document.getElementById('${verifyID}').textContent`)
-                        .done((response) => {
-                            result = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            result = JSON.parse(response.result||"");
                         });
                     return result === verifyText;
                 },
@@ -458,7 +405,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
             await endPreviewSession();
         }, 30000);
@@ -471,19 +418,19 @@ define(function (require, exports, module) {
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
                 "simple1.html");
 
-            await awaitsFor(() => LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
+            await awaitsFor(()=> LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
                 "status active");
 
-            let curDoc = DocumentManager.getCurrentDocument();
+            let curDoc =  DocumentManager.getCurrentDocument();
 
             // add a class
-            curDoc.replaceRange("addClass ", { line: 11, ch: 22 });
+            curDoc.replaceRange("addClass ", {line: 11, ch: 22});
             let hasClass;
             await awaitsFor(
                 function isClassChanged() {
                     LiveDevProtocol.evaluate(`document.getElementById('testId').classList.contains("addClass")`)
-                        .done((response) => {
-                            hasClass = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            hasClass = JSON.parse(response.result||"");
                         });
                     return hasClass;
                 },
@@ -493,12 +440,12 @@ define(function (require, exports, module) {
             );
 
             // remove a class
-            curDoc.replaceRange("", { line: 11, ch: 22 }, { line: 11, ch: 31 });
+            curDoc.replaceRange("", {line: 11, ch: 22}, {line: 11, ch: 31});
             await awaitsFor(
                 function isClassChanged() {
                     LiveDevProtocol.evaluate(`document.getElementById('testId').classList.contains("addClass")`)
-                        .done((response) => {
-                            hasClass = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            hasClass = JSON.parse(response.result||"");
                         });
                     return hasClass;
                 },
@@ -518,19 +465,19 @@ define(function (require, exports, module) {
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
                 "simple1.html");
 
-            await awaitsFor(() => LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
+            await awaitsFor(()=> LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
                 "status active");
 
-            let curDoc = DocumentManager.getCurrentDocument();
+            let curDoc =  DocumentManager.getCurrentDocument();
 
             // add an attribute
-            curDoc.replaceRange(' hello="world" ', { line: 11, ch: 15 });
+            curDoc.replaceRange(' hello="world" ', {line: 11, ch: 15});
             let result;
             await awaitsFor(
                 function isAttributeAdded() {
                     LiveDevProtocol.evaluate(`document.getElementById('testId').getAttribute("hello")`)
-                        .done((response) => {
-                            result = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            result = JSON.parse(response.result||"");
                         });
                     return result === "world";
                 },
@@ -540,12 +487,12 @@ define(function (require, exports, module) {
             );
 
             // remove the attribute
-            curDoc.replaceRange("", { line: 11, ch: 15 }, { line: 11, ch: 30 });
+            curDoc.replaceRange("", {line: 11, ch: 15}, {line: 11, ch: 30});
             await awaitsFor(
                 function isClassChanged() {
                     LiveDevProtocol.evaluate(`document.getElementById('testId').getAttribute("hello")`)
-                        .done((response) => {
-                            result = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            result = JSON.parse(response.result||"");
                         });
                     return result !== "world";
                 },
@@ -569,15 +516,15 @@ define(function (require, exports, module) {
             }, "codehints to be shown");
 
             await awaitsFor(function () {
-                for (let hint of expectedSomeHintsArray) {
-                    if (!testWindow.$(".codehint-menu").text().includes(hint)) {
+                for(let hint of expectedSomeHintsArray){
+                    if(!testWindow.$(".codehint-menu").text().includes(hint)){
                         return false;
                     }
                 }
                 return true;
             }, "expected hints to be there");
         }
-
+        
         async function _waitForLivePreviewElementColor(elementID, color) {
             let result;
             await awaitsFor(
@@ -587,12 +534,7 @@ define(function (require, exports, module) {
                     result = JSON.parse(response.result||"");
                     return result === color;
                 },
-                async ()=>{
-                    const response = await LiveDevProtocol.evaluate(
-                        `window.getComputedStyle(document.getElementById('${elementID}')).color`);
-                    result = JSON.parse(response.result||"");
-                    return `element #${elementID} to color ${color} but was ${result}`;
-                },
+                `element #${elementID} to color ${color}`,
                 5000,
                 50
             );
@@ -606,10 +548,10 @@ define(function (require, exports, module) {
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["inline-style.html"]),
                 "inline-style.html");
 
-            await awaitsFor(() => LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
+            await awaitsFor(()=> LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
                 "status active");
 
-            await _openCodeHints({ line: 9, ch: 18 }, ["red"]);
+            await _openCodeHints({line: 9, ch: 18}, ["red"]);
 
             let editor = EditorManager.getActiveEditor();
             const initialHistoryLength = editor.getHistory().done.length;
@@ -661,7 +603,7 @@ define(function (require, exports, module) {
             expect(editor.getToken().string).toBe("mediumvioletred");
 
             // the undo history should be just one above
-            expect(editor.getHistory().done.length).toBe(expectedHistoryLength + 3);
+            expect(editor.getHistory().done.length).toBe(expectedHistoryLength +3);
             await endPreviewSession();
         }, 30000);
 
@@ -671,48 +613,26 @@ define(function (require, exports, module) {
 
             await waitsForLiveDevelopmentToOpen();
 
-            await awaitsFor(() => LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
+            await awaitsFor(()=> LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
                 "status active");
 
-            // Ensure we get a clean copy of simple1.css from disk, not a modified cached version
-            // from previous tests.
-            await awaitsForDone(CommandManager.execute(Commands.FILE_CLOSE_ALL, { _forceClose: true }),
-                "closing all files before opening simple1.css");
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.css"]),
                 "simple1.css");
-            const doc = DocumentManager.getCurrentDocument();
-            const text = doc.getText();
-            // The original simple1.css should NOT contain background-color:#090
-            // That gets added by a previous test and must be cleaned up
-            // We verify the file doesn't contain #090 background-color and if it does, change expectations
-            // in linux, or if system slow, it will take some time for file system change event to catch
-            // up and update document. so we need to do this below. This is a bug in tests as why is the test not
-            // resetting file properly constantly?
-            const has90 = text.includes("background-color:#090");
-            const firstColor = has90 ? "#090" : "aliceblue";
-            const firstColorRGB = has90 ? "rgb(0, 153, 0)" : "rgb(240, 248, 255)";
 
-            await _openCodeHints({ line: 3, ch: 8 }, ["antiquewhite"]);
+            await _openCodeHints({line: 3, ch: 8}, ["antiquewhite"]);
 
             let editor = EditorManager.getActiveEditor();
             const initialHistoryLength = editor.getHistory().done.length;
             SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_DOWN, "keydown", testWindow.document.body);
             await awaitsFor(function () {
-                // #090 is the content from simple1.css file
-                // this appears as the 2nd item in the codehint menu, from "suggest previously used color" feature
-                return editor.getSelectedText() === firstColor;
-            }, `expected live hints to update selection to ${firstColor}`);
-            await _waitForLivePreviewElementColor("testId", firstColorRGB);
+                return editor.getSelectedText() === "antiquewhite";
+            }, "expected live hints to update selection to antiquewhite");
+            await _waitForLivePreviewElementColor("testId", "rgb(250, 235, 215)"); // antiquewhite
             SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_DOWN, "keydown", testWindow.document.body);
-
-            const secondColor = has90 ? "aliceblue" : "antiquewhite";
-            const secondColorRGB = has90 ? "rgb(240, 248, 255)" : "rgb(250, 235, 215)";
             await awaitsFor(function () {
-                return editor.getSelectedText() === secondColor;
-            }, `expected live hints to update selection to ${secondColor}`);
-
-            await _waitForLivePreviewElementColor("testId", secondColorRGB); // antiquewhite
-
+                return editor.getSelectedText() === "aqua";
+            }, "expected live hints to update selection to aqua");
+            await _waitForLivePreviewElementColor("testId", "rgb(0, 255, 255)"); //aqua
             return initialHistoryLength;
         }
 
@@ -748,13 +668,10 @@ define(function (require, exports, module) {
                 return editor.getSelectedText() === "";
             }, "to restore the text to old state");
             // check if we have the new value
-            if(!["antiquewhite", "aliceblue"].includes(editor.getToken().string)){
-                // so depends on the bug in _livePreviewCodeHintsCSS which color is at present.
-                expect("color should have beein either aliceblue or antiquewhite").toBeTrue();
-            }
+            expect(editor.getToken().string).toBe("aqua");
 
             // the undo history should be just one above
-            expect(editor.getHistory().done.length).toBe(expectedHistoryLength + 3);
+            expect(editor.getHistory().done.length).toBe(expectedHistoryLength +3);
             await endPreviewSession();
         }, 30000);
 
@@ -764,7 +681,7 @@ define(function (require, exports, module) {
                 async function isColorChanged() {
                     const response = await LiveDevProtocol.evaluate(
                         `document.getElementById('${elementID}').classList.contains('${classExpected}')`);
-                    result = JSON.parse(response.result || "");
+                    result = JSON.parse(response.result||"");
                     return result === true;
                 },
                 `element #${elementID} to have class ${classExpected}`,
@@ -773,13 +690,13 @@ define(function (require, exports, module) {
             );
         }
 
-        async function _livePreviewCodeHintsHTMLCSSClass(onlyOnce, position = { line: 15, ch: 24 }) {
+        async function _livePreviewCodeHintsHTMLCSSClass(onlyOnce, position = {line: 15, ch: 24}) {
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["inline-style.html"]),
                 "SpecRunnerUtils.openProjectFiles inline-style.html");
 
             await waitsForLiveDevelopmentToOpen();
 
-            await awaitsFor(() => LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
+            await awaitsFor(()=> LiveDevMultiBrowser.status === LiveDevMultiBrowser.STATUS_ACTIVE,
                 "status active");
 
             await _openCodeHints(position, ["testClass2", "testClass"]);
@@ -796,7 +713,7 @@ define(function (require, exports, module) {
             }, "expected live hints to update selection to next code hint");
             let newSelectedCodeHint = $($(".code-hints-list-item .highlight .brackets-html-hints")).text();
             await _waitForLivePreviewElementClass("testId", newSelectedCodeHint);
-            if (onlyOnce) {
+            if(onlyOnce){
                 return initialHistoryLength;
             }
             SpecRunnerUtils.simulateKeyEvent(KeyEvent.DOM_VK_DOWN, "keydown", testWindow.document.body);
@@ -834,7 +751,7 @@ define(function (require, exports, module) {
 
         it("should Live preview push html css class code hints selection changes to browser", async function () {
             //<p id="testId" class="t<cursor>estClass ">Brackets is awesome!</p>
-            await _testAtPos({ line: 15, ch: 24 });
+            await _testAtPos({line: 15, ch: 24});
             let editor = EditorManager.getActiveEditor();
             expect(editor.getToken().string).toBe('"testClass "');
             await endPreviewSession();
@@ -842,7 +759,7 @@ define(function (require, exports, module) {
 
         it("should Live preview push html css class code hints on empty input selection changes to browser", async function () {
             //<p id="testId" class="testClass <cursor>">Brackets is awesome!</p>
-            await _testAtPos({ line: 15, ch: 32 });
+            await _testAtPos({line: 15, ch: 32});
             let editor = EditorManager.getActiveEditor();
             expect(editor.getToken().string).toBe('"testClass "');
             await endPreviewSession();
@@ -850,7 +767,7 @@ define(function (require, exports, module) {
 
         it("should Live preview push html css class code hints selection changes to browser and commit", async function () {
             //<p id="testId" class="t<cursor>estClass ">Brackets is awesome!</p>
-            await _testAtPos({ line: 15, ch: 24 }, KeyEvent.DOM_VK_RETURN, true, 3);
+            await _testAtPos({line: 15, ch: 24}, KeyEvent.DOM_VK_RETURN, true, 3);
             let editor = EditorManager.getActiveEditor();
             expect(editor.getToken().string).toBe('"testClass2 "');
             await endPreviewSession();
@@ -858,7 +775,7 @@ define(function (require, exports, module) {
 
         it("should Live preview push html css class code hints on empty input selection changes to browser and commit", async function () {
             //<p id="testId" class="testClass <cursor>">Brackets is awesome!</p>
-            const selectedHint = await _testAtPos({ line: 15, ch: 32 }, KeyEvent.DOM_VK_RETURN, true, 2);
+            const selectedHint = await _testAtPos({line: 15, ch: 32},  KeyEvent.DOM_VK_RETURN, true, 2);
             let editor = EditorManager.getActiveEditor();
             expect(editor.getToken().string).toBe(`"testClass ${selectedHint}"`);
             await endPreviewSession();
@@ -869,12 +786,12 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
-            await _editFileAndVerifyLivePreview("simple2.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple2.html", {line: 11, ch: 45}, 'hello world ',
                 "simpId", "Brackets is hello world awesome!");
             // now switch back to old file
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world hello world awesome!");
             await endPreviewSession();
         }, 30000);
@@ -884,7 +801,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["readme.md"]),
@@ -901,7 +818,7 @@ define(function (require, exports, module) {
             expect(srcURL.pathname.endsWith(SVG_IMAGE_PATH)).toBeTrue();
 
             // now switch back to old file
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world hello world awesome!");
             await endPreviewSession();
         }, 30000);
@@ -911,7 +828,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["sub/icon_chevron.png"]),
@@ -928,7 +845,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
@@ -974,7 +891,7 @@ define(function (require, exports, module) {
 
         async function triggerEscapeKeyEvent() {
             // Create a new KeyboardEvent
-            const jsExec = `document.getElementById("inputText").dispatchEvent(new KeyboardEvent("keydown", {
+            const jsExec= `document.getElementById("inputText").dispatchEvent(new KeyboardEvent("keydown", {
                 key: "Escape",
                 keyCode: 27, // keyCode for Escape key
                 code: "Escape",
@@ -1005,7 +922,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
@@ -1041,7 +958,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
@@ -1107,7 +1024,7 @@ define(function (require, exports, module) {
 
         it("should embedded html live previews be able to open urls in external browser for a target=_blank", async function () {
             // test is only for tauri. In browser, browser handles the anchor tags
-            if (!Phoenix.isNativeApp) {
+            if(!Phoenix.isNativeApp) {
                 return;
             }
             let openURLRequested;
@@ -1141,10 +1058,10 @@ define(function (require, exports, module) {
                 await awaitsFor(function () {
                     $dlg = testWindow.$(".modal.instance");
                     return $dlg.length > 0;
-                }, "dialog to appear");
+                },  "dialog to appear");
             }
             // test is only for tauri. In browser, browser handles the anchor tags
-            if (!Phoenix.isNativeApp) {
+            if(!Phoenix.isNativeApp) {
                 return;
             }
             let openURLRequested;
@@ -1159,7 +1076,7 @@ define(function (require, exports, module) {
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
             expect(iFrame.src.endsWith("hyperlink.html")).toBeTrue();
 
-            for (let i = 0; i < 4; i++) {
+            for(let i=0;i<4;i++){
                 await forRemoteExec(`document.getElementById("externalLink").click()`);
             }
             await awaitsFor(function () { return openURLRequested; }, "https://google.com/ open", 2000);
@@ -1168,7 +1085,7 @@ define(function (require, exports, module) {
 
             // now click on the links a lotta time, no url should be opened
             openURLRequested = null;
-            for (let i = 0; i < 40; i++) {
+            for(let i=0;i<40;i++){
                 await forRemoteExec(`document.getElementById("externalLink").click()`);
             }
             await awaits(300);
@@ -1219,7 +1136,7 @@ define(function (require, exports, module) {
         }, 30000);
 
         it("should not be able to preview html file not in project - tauri only", async function () {
-            if (!Phoenix.isNativeApp) {
+            if(!Phoenix.isNativeApp) {
                 return;
             }
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
@@ -1241,10 +1158,10 @@ define(function (require, exports, module) {
             await awaitsFor(
                 function () {
                     LiveDevProtocol.evaluate(script)
-                        .done((response) => {
-                            result = JSON.parse(response.result || "");
+                        .done((response)=>{
+                            result = JSON.parse(response.result||"");
                         });
-                    if (compareFn) {
+                    if(compareFn){
                         return compareFn(result);
                     }
                     // just exec and return if no compare function is specified
@@ -1265,17 +1182,17 @@ define(function (require, exports, module) {
             await waitsForLiveDevelopmentToOpen();
             let editor = EditorManager.getActiveEditor();
             editor.setCursorPos({ line: 0, ch: 0 });
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 0;
             });
 
             editor.setCursorPos({ line: 11, ch: 10 });
 
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 1;
             });
             await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].trackingElement.id`,
-                (result) => {
+                (result)=>{
                     return result === 'testId';
                 });
 
@@ -1287,7 +1204,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple2.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 0;
             });
 
@@ -1297,12 +1214,12 @@ define(function (require, exports, module) {
             editor.setCursorPos({ line: 2, ch: 6 });
 
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 3;
             });
             await forRemoteExec(
                 `document.getElementsByClassName("__brackets-ld-highlight")[0].trackingElement.classList[0]`,
-                (result) => {
+                (result)=>{
                     return result === 'testClass';
                 });
 
@@ -1312,12 +1229,12 @@ define(function (require, exports, module) {
             editor.setCursorPos({ line: 0, ch: 1 });
 
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 2;
             });
             await forRemoteExec(
                 `document.getElementsByClassName("__brackets-ld-highlight")[0].trackingElement.classList[0]`,
-                (result) => {
+                (result)=>{
                     return result === 'testClass2';
                 });
 
@@ -1331,30 +1248,30 @@ define(function (require, exports, module) {
 
             await waitsForLiveDevelopmentToOpen();
             let editor = EditorManager.getActiveEditor();
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 0;
             });
 
             editor.setCursorPos({ line: 11, ch: 10 });
 
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 1;
             });
             let originalWidth;
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].style.width`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].style.width`, (result)=>{
                 originalWidth = result;
                 return true;
             });
 
             iFrame.style.width = "100px";
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].style.width`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].style.width`, (result)=>{
                 return originalWidth !== result;
             });
             iFrame.style.width = "100%";
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].style.width`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].style.width`, (result)=>{
                 return originalWidth === result;
             });
 
@@ -1369,17 +1286,17 @@ define(function (require, exports, module) {
             let editor = EditorManager.getActiveEditor();
 
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 0;
             });
             await forRemoteExec(`document.getElementById("testId2").click()`);
 
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 1;
             });
             await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].trackingElement.id`,
-                (result) => {
+                (result)=>{
                     return result === 'testId2';
                 });
             expect(editor.getCursorPos()).toEql({ line: 12, ch: 0, sticky: null });
@@ -1388,10 +1305,10 @@ define(function (require, exports, module) {
         }, 30000);
 
         async function _forSelection(id, editor, cursor) {
-            await awaitsFor(() => {
+            await awaitsFor(()=>{
                 const cursorPos = editor.getCursorPos();
                 return cursorPos && cursorPos.line === cursor.line && cursorPos.ch === cursor.ch;
-            }, "waiting for editor reverse selection on " + id);
+            }, "waiting for editor reverse selection on "+ id);
         }
 
         async function _verifyCssReverseHighlight(fileName) {
@@ -1457,7 +1374,7 @@ define(function (require, exports, module) {
                 "closing all file");
 
             await forRemoteExec(`document.getElementById("testId").click()`);
-            await awaitsFor(() => {
+            await awaitsFor(()=>{
                 return !!EditorManager.getActiveEditor();
             }, "Editor to be opened");
             let editor = EditorManager.getActiveEditor();
@@ -1521,7 +1438,7 @@ define(function (require, exports, module) {
             await waitsForLiveDevelopmentToOpen();
 
             await awaits(1000);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 0;
             });
 
@@ -1539,11 +1456,11 @@ define(function (require, exports, module) {
             await forRemoteExec(`document.getElementById("testId").click()`);
             await awaits(1000);
 
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 1;
             });
             await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight")[0].trackingElement.id`,
-                (result) => {
+                (result)=>{
                     return result === 'testId';
                 });
             expect(editor.getCursorPos()).toEql({ line: 11, ch: 0, sticky: null });
@@ -1561,7 +1478,7 @@ define(function (require, exports, module) {
             editor && editor.setCursorPos({ line: 0, ch: 0 });
 
             await awaits(500);
-            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result) => {
+            await forRemoteExec(`document.getElementsByClassName("__brackets-ld-highlight").length`, (result)=>{
                 return result === 0;
             });
             await forRemoteExec(`document.getElementById("testId2").click()`);
@@ -1578,9 +1495,9 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
-            await forRemoteExec(`document.savePageCtrlSDisabledByPhoenix`, (result) => {
+            await forRemoteExec(`document.savePageCtrlSDisabledByPhoenix`, (result)=>{
                 return result === true;
             });
 
@@ -1607,19 +1524,19 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles simple1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             let editor = EditorManager.getActiveEditor();
             await BeautificationManager.beautifyEditor(editor);
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 73 }, 'yo',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 73}, 'yo',
                 "testId", "Brackets is hello world awesome!yo");
 
             await awaitsForDone(CommandManager.execute(Commands.EDIT_UNDO), "undo");
             await awaitsForDone(CommandManager.execute(Commands.EDIT_UNDO), "undo");
             await awaitsForDone(CommandManager.execute(Commands.EDIT_UNDO), "undo");
 
-            await _editFileAndVerifyLivePreview("simple1.html", { line: 11, ch: 45 }, 'hello world ',
+            await _editFileAndVerifyLivePreview("simple1.html", {line: 11, ch: 45}, 'hello world ',
                 "testId", "Brackets is hello world awesome!");
 
             await endPreviewSession();
@@ -1630,7 +1547,7 @@ define(function (require, exports, module) {
                 "SpecRunnerUtils.openProjectFiles exploit1.html");
 
             await waitsForLiveDevelopmentToOpen();
-            await forRemoteExec(`document.responseStatus`, (result) => {
+            await forRemoteExec(`document.responseStatus`, (result)=>{
                 return result === 404;
             });
 
@@ -1645,11 +1562,11 @@ define(function (require, exports, module) {
             // scroll to middile of page element so that the scroll position is saved
             await forRemoteExec(`document.getElementById("midLine").scrollIntoView();`);
             let sessionStorageSavedScrollPos, savedWindowScrollY;
-            await forRemoteExec(`window.scrollY`, (result) => {
+            await forRemoteExec(`window.scrollY`, (result)=>{
                 savedWindowScrollY = result;
                 return result && result !== 0;
             });
-            await forRemoteExec(`sessionStorage.getItem("saved-scroll-" + location.href)`, (result) => {
+            await forRemoteExec(`sessionStorage.getItem("saved-scroll-" + location.href)`, (result)=>{
                 sessionStorageSavedScrollPos = result;
                 return !!result;
             });
@@ -1660,14 +1577,14 @@ define(function (require, exports, module) {
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
                 "SpecRunnerUtils.openProjectFiles simple1.html");
             await waitsForLiveDevelopmentToOpen();
-            await forRemoteExec(`window.scrollY`, (result) => {
+            await forRemoteExec(`window.scrollY`, (result)=>{
                 return result !== savedWindowScrollY;
             });
 
             // now switch back to old page and verify if the scroll position was restored
             await awaitsForDone(SpecRunnerUtils.openProjectFiles(["longPage.html"]),
                 "SpecRunnerUtils.openProjectFiles longPage.html");
-            await forRemoteExec(`window.scrollY`, (result) => {
+            await forRemoteExec(`window.scrollY`, (result)=>{
                 return result === savedWindowScrollY;
             });
 
@@ -1734,7 +1651,7 @@ define(function (require, exports, module) {
 
             await waitsForLiveDevelopmentToOpen();
             await awaitsForDone(SpecRunnerUtils.openProjectFiles([SVG_IMAGE_PATH]),
-                "SpecRunnerUtils.openProjectFiles " + SVG_IMAGE_PATH);
+                "SpecRunnerUtils.openProjectFiles "+ SVG_IMAGE_PATH);
 
             await _waitForIframeSrc(SVG_IMAGE_PATH);
             let pinURLBtn = testWindow.$(testWindow.document.getElementById("pinURLButton"));
@@ -1796,7 +1713,7 @@ define(function (require, exports, module) {
             await waitsForLiveDevelopmentToOpen();
             await window.Phoenix.VFS.ensureExistsDirAsync("/test/parked");
             await awaitsForDone(SpecRunnerUtils.openProjectFiles([SVG_IMAGE_PATH]),
-                "SpecRunnerUtils.openProjectFiles" + SVG_IMAGE_PATH);
+                "SpecRunnerUtils.openProjectFiles"+SVG_IMAGE_PATH);
 
             await _waitForIframeSrc(SVG_IMAGE_PATH);
             let pinURLBtn = testWindow.$(testWindow.document.getElementById("pinURLButton"));
@@ -1821,7 +1738,7 @@ define(function (require, exports, module) {
 
         async function _storeInRemotePreview(value) {
             await forRemoteExec(`window.remoteSetterTest = "${value}"`);
-            await forRemoteExec(`window.remoteSetterTest`, (result) => {
+            await forRemoteExec(`window.remoteSetterTest`, (result)=>{
                 return result === value;
             });
         }
@@ -1844,7 +1761,7 @@ define(function (require, exports, module) {
                 document.getElementById('testId').textContent = '${jsChangedText}';});`;
             EditorManager.getActiveEditor().document.setText(code);
             await awaitsForDone(CommandManager.execute(Commands.FILE_SAVE_ALL), "FILE_SAVE_ALL");
-            await forRemoteExec(`document.getElementById("testId").textContent`, (result) => {
+            await forRemoteExec(`document.getElementById("testId").textContent`, (result)=>{
                 return result === jsChangedText;
             });
             await endPreviewSession();
@@ -1863,7 +1780,7 @@ define(function (require, exports, module) {
 
             testWindow.$("#reloadLivePreviewButton").click();
 
-            await forRemoteExec(`window.remoteSetterTest`, (result) => {
+            await forRemoteExec(`window.remoteSetterTest`, (result)=>{
                 return result !== storedValue;
             });
             await endPreviewSession();
@@ -1883,7 +1800,7 @@ define(function (require, exports, module) {
             testWindow.$("#pinURLButton").click();
             testWindow.$("#reloadLivePreviewButton").click();
 
-            await forRemoteExec(`window.remoteSetterTest`, (result) => {
+            await forRemoteExec(`window.remoteSetterTest`, (result)=>{
                 return result !== storedValue;
             });
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
@@ -1909,7 +1826,7 @@ define(function (require, exports, module) {
 
             testWindow.$("#reloadLivePreviewButton").click();
 
-            await forRemoteExec(`window.remoteSetterTest`, (result) => {
+            await forRemoteExec(`window.remoteSetterTest`, (result)=>{
                 return result !== storedValue;
             });
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
@@ -1935,7 +1852,7 @@ define(function (require, exports, module) {
 
             testWindow.$("#reloadLivePreviewButton").click();
 
-            await forRemoteExec(`window.remoteSetterTest`, (result) => {
+            await forRemoteExec(`window.remoteSetterTest`, (result)=>{
                 return result !== storedValue;
             });
             let iFrame = testWindow.document.getElementById("panel-live-preview-frame");
@@ -1944,246 +1861,5 @@ define(function (require, exports, module) {
             testWindow.$("#pinURLButton").click();
             await endPreviewSession();
         }, 30000);
-
-        describe("Edit Mode Tests", function () {
-
-            async function waitsForLiveDevelopmentToOpenWithEditMode(elemHighlights = 'hover') {
-                // Enable edit mode before opening live preview
-                if (LiveDevMultiBrowser && LiveDevMultiBrowser.config) {
-                    LiveDevMultiBrowser.config.isProUser = true;
-                    LiveDevMultiBrowser.config.elemHighlights = elemHighlights;
-                    // Update the remote browser configuration
-                    if (LiveDevMultiBrowser.updateConfig) {
-                        LiveDevMultiBrowser.updateConfig(JSON.stringify(LiveDevMultiBrowser.config));
-                    }
-                }
-                LiveDevMultiBrowser.open();
-                await waitsForLiveDevelopmentFileSwitch();
-            }
-
-            async function endEditModePreviewSession() {
-                await _enableLiveHighlights(true);
-                LiveDevMultiBrowser.close();
-                // Disable edit mode after session
-                if (LiveDevMultiBrowser && LiveDevMultiBrowser.config) {
-                    LiveDevMultiBrowser.config.isProUser = false;
-                    LiveDevMultiBrowser.config.elemHighlights = 'hover';
-                }
-                await awaitsForDone(CommandManager.execute(Commands.FILE_CLOSE_ALL, { _forceClose: true }),
-                    "closing all file");
-            }
-
-            async function waitForInfoBox(shouldBeVisible = true, timeout = 5000) {
-                await forRemoteExec(`
-                    const shadowHosts = Array.from(document.body.children).filter(el => el.shadowRoot);
-                    let hasInfoBox = false;
-                    shadowHosts.forEach(host => {
-                        if (host.shadowRoot && host.shadowRoot.innerHTML.includes('phoenix-node-info-box')) {
-                            hasInfoBox = true;
-                        }
-                    });
-                    hasInfoBox;
-                `, (result) => {
-                    return result === shouldBeVisible;
-                });
-            }
-
-            async function waitForMoreOptionsBox(shouldBeVisible = true, timeout = 5000) {
-                await forRemoteExec(`
-                    const shadowHosts = Array.from(document.body.children).filter(el => el.shadowRoot);
-                    let hasMoreOptionsBox = false;
-                    shadowHosts.forEach(host => {
-                        if (host.shadowRoot && host.shadowRoot.innerHTML.includes('phoenix-more-options-box')) {
-                            hasMoreOptionsBox = true;
-                        }
-                    });
-                    hasMoreOptionsBox;
-                `, (result) => {
-                    return result === shouldBeVisible;
-                });
-            }
-
-            async function waitForClickedElement(shouldBeVisible = true, timeout = 5000) {
-                await forRemoteExec(`
-                    const highlightedElements = document.getElementsByClassName("__brackets-ld-highlight");
-                    Array.from(highlightedElements).some(el =>
-                        el.style.backgroundColor && el.style.backgroundColor.includes('rgba(0, 162, 255')
-                    );
-                `, (result) => {
-                    return result === shouldBeVisible;
-                });
-            }
-
-            async function waitForNoEditBoxes() {
-                // Wait for no shadow DOM boxes and no clicked element highlighting
-                await forRemoteExec(`
-                    const shadowHosts = Array.from(document.body.children).filter(el => el.shadowRoot);
-                    shadowHosts.length;
-                `, (result) => {
-                    return result === 0;
-                });
-
-                await waitForClickedElement(false);
-            }
-
-            it("should show info box on hover when elemHighlights is 'hover'", async function () {
-                await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
-                    "SpecRunnerUtils.openProjectFiles simple1.html");
-
-                await waitsForLiveDevelopmentToOpenWithEditMode('hover');
-
-                // Initially no boxes should be visible
-                await waitForNoEditBoxes();
-
-                // Hover over testId element
-                await forRemoteExec(`
-                    const event = new MouseEvent('mouseover', { bubbles: true, cancelable: true });
-                    document.getElementById('testId').dispatchEvent(event);
-                `);
-
-                // Info box should appear on hover
-                await waitForInfoBox(true);
-                await waitForMoreOptionsBox(false);
-
-                // Mouse out should hide the info box
-                await forRemoteExec(`
-                    const event = new MouseEvent('mouseout', { bubbles: true, cancelable: true });
-                    document.getElementById('testId').dispatchEvent(event);
-                `);
-
-                await waitForInfoBox(false);
-                await waitForNoEditBoxes();
-
-                await endEditModePreviewSession();
-            }, 30000);
-
-            it("should show more options box on click when elemHighlights is 'hover'", async function () {
-                await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
-                    "SpecRunnerUtils.openProjectFiles simple1.html");
-
-                await waitsForLiveDevelopmentToOpenWithEditMode('hover');
-
-                // Click on testId element
-                await forRemoteExec(`document.getElementById('testId').click()`);
-
-                // More options box should appear on click
-                await waitForMoreOptionsBox(true);
-                await waitForClickedElement(true);
-
-                // Clicking on a different element should move the box
-                await forRemoteExec(`document.getElementById('testId2').click()`);
-
-                await waitForMoreOptionsBox(true);
-                await waitForClickedElement(true);
-
-                await endEditModePreviewSession();
-            }, 30000);
-
-            it("should show more options box on click when elemHighlights is 'click'", async function () {
-                await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
-                    "SpecRunnerUtils.openProjectFiles simple1.html");
-
-                await waitsForLiveDevelopmentToOpenWithEditMode('click');
-
-                // Initially no boxes should be visible
-                await waitForNoEditBoxes();
-
-                // In click mode, hover should not show info box
-                await forRemoteExec(`
-                    const event = new MouseEvent('mouseover', { bubbles: true, cancelable: true });
-                    document.getElementById('testId').dispatchEvent(event);
-                `);
-
-                // Should still be no boxes visible
-                await waitForInfoBox(false);
-                await waitForMoreOptionsBox(false);
-
-                // Click should show more options box
-                await forRemoteExec(`document.getElementById('testId').click()`);
-
-                await waitForMoreOptionsBox(true);
-                await waitForClickedElement(true);
-
-                await endEditModePreviewSession();
-            }, 30000);
-
-            it("should handle multiple element interactions in hover mode", async function () {
-                await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple2.html"]),
-                    "SpecRunnerUtils.openProjectFiles simple2.html");
-
-                await waitsForLiveDevelopmentToOpenWithEditMode('hover');
-
-                // Test hovering over multiple elements
-                const elementIds = ['simpId', 'simpId2', 'simpId3'];
-
-                for (let elementId of elementIds) {
-                    // Hover over element
-                    await forRemoteExec(`
-                        const event = new MouseEvent('mouseover', { bubbles: true, cancelable: true });
-                        document.getElementById('${elementId}').dispatchEvent(event);
-                    `);
-
-                    // Info box should appear
-                    await waitForInfoBox(true);
-
-                    // Mouse out
-                    await forRemoteExec(`
-                        const event = new MouseEvent('mouseout', { bubbles: true, cancelable: true });
-                        document.getElementById('${elementId}').dispatchEvent(event);
-                    `);
-
-                    // Box should disappear
-                    await waitForInfoBox(false);
-                }
-
-                await endEditModePreviewSession();
-            }, 30000);
-
-            it("should handle multiple element clicks and box movement", async function () {
-                await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple2.html"]),
-                    "SpecRunnerUtils.openProjectFiles simple2.html");
-
-                await waitsForLiveDevelopmentToOpenWithEditMode('hover');
-
-                const elementIds = ['simpId', 'simpId2', 'simpId3'];
-
-                // Click on first element
-                await forRemoteExec(`document.getElementById('${elementIds[0]}').click()`);
-
-                await waitForMoreOptionsBox(true);
-                await waitForClickedElement(true);
-
-                // Click on subsequent elements - box should move
-                for (let i = 1; i < elementIds.length; i++) {
-                    await forRemoteExec(`document.getElementById('${elementIds[i]}').click()`);
-
-                    await waitForMoreOptionsBox(true);
-                    await waitForClickedElement(true);
-                }
-
-                await endEditModePreviewSession();
-            }, 30000);
-
-            it("should dismiss boxes when clicking outside elements", async function () {
-                await awaitsForDone(SpecRunnerUtils.openProjectFiles(["simple1.html"]),
-                    "SpecRunnerUtils.openProjectFiles simple1.html");
-
-                await waitsForLiveDevelopmentToOpenWithEditMode('hover');
-
-                // Click on element to show more options box
-                await forRemoteExec(`document.getElementById('testId').click()`);
-
-                await waitForMoreOptionsBox(true);
-
-                // Click on body (outside any specific element)
-                await forRemoteExec(`document.body.click()`);
-
-                // Boxes should be dismissed
-                await waitForMoreOptionsBox(false);
-                await waitForClickedElement(false);
-
-                await endEditModePreviewSession();
-            }, 30000);
-        });
     });
 });

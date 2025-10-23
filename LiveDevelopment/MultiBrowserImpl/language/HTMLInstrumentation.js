@@ -851,12 +851,10 @@ define(function (require, exports, module) {
             return (mark.tagID === tagId);
         });
         if (markFound) {
-            return {
-                from: markFound.find().from,
-                to: markFound.find().to
-            };
+            return markFound.find().from;
         }
         return null;
+
     }
 
     // private methods

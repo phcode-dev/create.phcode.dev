@@ -27,8 +27,7 @@ define(function (require, exports, module) {
         "src/History",
         "src/NoRepo",
         "src/ProjectTreeMarks",
-        "src/Remotes",
-        "src/TabBarIntegration"
+        "src/Remotes"
     ];
     require(modules);
 
@@ -49,12 +48,10 @@ define(function (require, exports, module) {
 
     // export API's for other extensions
     if (typeof window === "object") {
-        const TabBarIntegration = require("src/TabBarIntegration");
         window.phoenixGitEvents = {
             EventEmitter: EventEmitter,
             Events: Events,
-            Git,
-            TabBarIntegration
+            Git
         };
     }
 });
@@ -1170,8 +1167,6 @@ define("src/Constants", function (require, exports) {
     exports.CMD_GIT_AUTHORS_OF_SELECTION = Commands.CMD_GIT_AUTHORS_OF_SELECTION;
     exports.CMD_GIT_AUTHORS_OF_FILE = Commands.CMD_GIT_AUTHORS_OF_FILE;
     exports.CMD_GIT_TOGGLE_UNTRACKED = Commands.CMD_GIT_TOGGLE_UNTRACKED;
-    exports.CMD_GIT_HISTORY_GLOBAL = Commands.CMD_GIT_HISTORY_GLOBAL;
-    exports.CMD_GIT_HISTORY_FILE = Commands.CMD_GIT_HISTORY_FILE;
 });
 
 define("src/ErrorHandler", function (require, exports) {
@@ -1180,7 +1175,6 @@ define("src/ErrorHandler", function (require, exports) {
         Mustache                   = brackets.getModule("thirdparty/mustache/mustache"),
         Metrics                    = brackets.getModule("utils/Metrics"),
         Strings                    = brackets.getModule("strings"),
-        NotificationUI             = brackets.getModule("widgets/NotificationUI"),
         Utils                      = require("src/Utils"),
         errorDialogTemplate        = `<div id="git-error-dialog" class="modal">
     <div class="modal-header">
@@ -1229,11 +1223,12 @@ define("src/ErrorHandler", function (require, exports) {
      *
      * @param err
      * @param title
-     * @param {dontStripError: boolean, errorMetric: string, useNotification: boolean} options
+     * @param {dontStripError: boolean, errorMetric: string} options
      */
     exports.showError = function (err, title, options = {}) {
         const dontStripError = options.dontStripError;
         const errorMetric = options.errorMetric;
+        Metrics.countEvent(Metrics.EVENT_TYPE.GIT, 'dialogErr', errorMetric || "Show");
         if (err.__shown) { return err; }
 
         exports.logError(err);
@@ -1255,27 +1250,14 @@ define("src/ErrorHandler", function (require, exports) {
                 errorBody = "Error can't be stringified by JSON.stringify";
             }
         }
-        errorBody = window.debugMode ? `${errorBody}\n${errorStack}` : errorBody;
 
-        if(options.useNotification){
-            Metrics.countEvent(Metrics.EVENT_TYPE.GIT, 'notifyErr', errorMetric || "Show");
-            NotificationUI.createToastFromTemplate(title,
-                `<textarea readonly style="width: 200px; height: 200px; cursor: text; resize: none;">${errorBody}</textarea>`, {
-                    toastStyle: NotificationUI.NOTIFICATION_STYLES_CSS_CLASS.ERROR,
-                    dismissOnClick: false,
-                    instantOpen: true
-                });
-        } else {
-            Metrics.countEvent(Metrics.EVENT_TYPE.GIT, 'dialogErr', errorMetric || "Show");
-            const compiledTemplate = Mustache.render(errorDialogTemplate, {
-                title: title,
-                body: errorBody,
-                Strings: Strings
-            });
+        var compiledTemplate = Mustache.render(errorDialogTemplate, {
+            title: title,
+            body: window.debugMode ? `${errorBody}\n${errorStack}` : errorBody,
+            Strings: Strings
+        });
 
-            Dialogs.showModalDialogUsingTemplate(compiledTemplate);
-        }
-
+        Dialogs.showModalDialogUsingTemplate(compiledTemplate);
         if (typeof err === "string") { err = new Error(err); }
         err.__shown = true;
         return err;
@@ -1427,7 +1409,6 @@ define("src/GutterManager", function (require, exports) {
         CommandManager  = brackets.getModule("command/CommandManager"),
         DocumentManager = brackets.getModule("document/DocumentManager"),
         EditorManager   = brackets.getModule("editor/EditorManager"),
-        ScrollTrackMarkers  = brackets.getModule("search/ScrollTrackMarkers"),
         MainViewManager = brackets.getModule("view/MainViewManager"),
         ErrorHandler    = require("src/ErrorHandler"),
         Events          = require("src/Events"),
@@ -1435,8 +1416,6 @@ define("src/GutterManager", function (require, exports) {
         Git             = require("src/git/Git"),
         Preferences     = require("./Preferences"),
         Strings             = brackets.getModule("strings");
-
-    const GIT_SCROLL_MARKS = "git_marks";
 
     var gitAvailable = false,
         gutterName = "brackets-git-gutter",
@@ -1468,11 +1447,6 @@ define("src/GutterManager", function (require, exports) {
 
     function _cursorActivity(_evt, editor){
         // this is to prevent a gutter gap in the active line if there is no color on this line.
-        if (editor.hasSelection()){
-            // we dont show the gutter gap color when there is a selection. also adding dummy gutter is expensive
-            // and make test selection with cursor choppy
-            return;
-        }
         _addDummyGutterMarkerIfNotExist(editor._codeMirror, editor.getCursorPos().line);
     }
 
@@ -1552,7 +1526,7 @@ define("src/GutterManager", function (require, exports) {
         }
     }
 
-    function _showGutters(editor, _results) {
+    function showGutters(editor, _results) {
         prepareGutter(editor);
 
         var cm = editor._codeMirror;
@@ -1564,8 +1538,8 @@ define("src/GutterManager", function (require, exports) {
         cm.clearGutter(gutterName);
         cm.gitGutters.forEach(function (obj) {
             var $marker = $("<div>")
-                .addClass(gutterName + "-" + obj.type + " gitline-" + (obj.line + 1))
-                .html("&nbsp;");
+                            .addClass(gutterName + "-" + obj.type + " gitline-" + (obj.line + 1))
+                            .html("&nbsp;");
             cm.setGutterMarker(obj.line, gutterName, $marker[0]);
         });
         _cursorActivity(null, editor);
@@ -1641,48 +1615,6 @@ define("src/GutterManager", function (require, exports) {
         return doc && doc._masterEditor;
     }
 
-    function hasVerticalScrollbar(editor) {
-        const cm = editor._codeMirror;
-        const scrollEl = cm.getScrollerElement();
-        return scrollEl.scrollHeight > scrollEl.clientHeight;
-    }
-
-
-    function _markScrollbar(editor, allChanges) {
-        ScrollTrackMarkers.clear(editor, GIT_SCROLL_MARKS);
-        if(!hasVerticalScrollbar(editor)){
-            return;
-        }
-        const added = allChanges
-            .filter(item => item.type === "added")
-            .map(({ line }) => ({ line, ch: 0 }));
-
-        const removed = allChanges
-            .filter(item => item.type === "removed")
-            .map(({ line }) => ({ line, ch: 0 }));
-
-        const modified = allChanges
-            .filter(item => item.type === "modified")
-            .map(({ line }) => ({ line, ch: 0 }));
-
-        const trackers = [
-            {arr: added, css: "brackets-git-added"},
-            {arr: removed, css: "brackets-git-removed"},
-            {arr: modified, css: "brackets-git-modified"}
-        ];
-        for(let tracker of trackers) {
-            if( !tracker.arr.length ){
-                continue;
-            }
-            let posArray = tracker.arr.map(item => ({ line: item.line, ch: 0 }));
-            ScrollTrackMarkers.addTickmarks(editor, posArray, {
-                trackStyle: ScrollTrackMarkers.TRACK_STYLES.ON_LEFT,
-                name: GIT_SCROLL_MARKS,
-                cssColorClass: tracker.css
-            });
-        }
-    }
-
     function processDiffResults(editor, diff) {
         var added = [],
             removed = [],
@@ -1708,9 +1640,9 @@ define("src/GutterManager", function (require, exports) {
                     type: "removed",
                     line: lineRemovedFrom,
                     content: str.split("\n")
-                        .filter(function (l) { return l.indexOf("-") === 0; })
-                        .map(function (l) { return l.substring(1); })
-                        .join("\n")
+                                .filter(function (l) { return l.indexOf("-") === 0; })
+                                .map(function (l) { return l.substring(1); })
+                                .join("\n")
                 });
             }
 
@@ -1748,9 +1680,7 @@ define("src/GutterManager", function (require, exports) {
             o.line = o.line + 1;
         });
 
-        const allChanges = [].concat(added, removed, modified);
-        _showGutters(editor, allChanges);
-        _markScrollbar(editor, allChanges);
+        showGutters(editor, [].concat(added, removed, modified));
     }
 
     function refresh() {
@@ -2649,8 +2579,8 @@ define("src/Main", function (require, exports) {
     const CMD_ADD_TO_IGNORE      = "git.addToIgnore",
         CMD_REMOVE_FROM_IGNORE = "git.removeFromIgnore",
         $icon                  = $(`<a id='git-toolbar-icon' title="${Strings.STATUSBAR_SHOW_GIT}" href='#'></a>`)
-            .addClass("forced-hidden")
-            .prependTo($(".bottom-buttons"));
+                                    .addClass("forced-hidden")
+                                    .prependTo($(".bottom-buttons"));
 
     let gitEnabled = false;
 
@@ -2780,7 +2710,7 @@ define("src/Main", function (require, exports) {
         const displayStr = StringUtils.format(Strings.RESET_DETAIL, commitDetailStr, gitCmdUsed);
         Utils.askQuestion(title,
             message + "<br><br>" + displayStr,
-            { booleanResponse: true, noescape: true,
+            { booleanResponse: true, noescape: true ,
                 customOkBtn: Strings.RESET, customOkBtnClass: "danger"})
             .then(function (response) {
                 if (response === true) {
@@ -2848,10 +2778,7 @@ define("src/Main", function (require, exports) {
             // "More options" context menu commands
             Constants.CMD_GIT_DISCARD_ALL_CHANGES,
             Constants.CMD_GIT_UNDO_LAST_COMMIT,
-            Constants.CMD_GIT_TOGGLE_UNTRACKED,
-
-            Constants.CMD_GIT_HISTORY_GLOBAL,
-            Constants.CMD_GIT_HISTORY_FILE
+            Constants.CMD_GIT_TOGGLE_UNTRACKED
         ];
 
         // Disable each command
@@ -2879,9 +2806,6 @@ define("src/Main", function (require, exports) {
         gitSubMenu.addMenuItem(Constants.CMD_GIT_GOTO_NEXT_CHANGE);
         gitSubMenu.addMenuItem(Constants.CMD_GIT_GOTO_PREVIOUS_CHANGE);
         gitSubMenu.addMenuItem(Constants.CMD_GIT_CLOSE_UNMODIFIED);
-        gitSubMenu.addMenuDivider();
-        gitSubMenu.addMenuItem(Constants.CMD_GIT_HISTORY_GLOBAL);
-        gitSubMenu.addMenuItem(Constants.CMD_GIT_HISTORY_FILE);
         gitSubMenu.addMenuDivider();
         gitSubMenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_SELECTION);
         gitSubMenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_FILE);
@@ -2929,9 +2853,6 @@ define("src/Main", function (require, exports) {
         Menus.ContextMenu.assignContextMenuToSelector(".git-more-options-btn", optionsCmenu);
         optionsCmenu.addMenuItem(Constants.CMD_GIT_DISCARD_ALL_CHANGES);
         optionsCmenu.addMenuItem(Constants.CMD_GIT_UNDO_LAST_COMMIT);
-        optionsCmenu.addMenuDivider();
-        optionsCmenu.addMenuItem(Constants.CMD_GIT_HISTORY_GLOBAL);
-        optionsCmenu.addMenuItem(Constants.CMD_GIT_HISTORY_FILE);
         optionsCmenu.addMenuDivider();
         optionsCmenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_SELECTION);
         optionsCmenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_FILE);
@@ -2999,9 +2920,6 @@ define("src/Main", function (require, exports) {
         Utils.enableCommand(Constants.CMD_GIT_AUTHORS_OF_SELECTION, enabled);
         Utils.enableCommand(Constants.CMD_GIT_AUTHORS_OF_FILE, enabled);
 
-        Utils.enableCommand(Constants.CMD_GIT_HISTORY_GLOBAL, enabled);
-        Utils.enableCommand(Constants.CMD_GIT_HISTORY_FILE, enabled);
-
         Utils.enableCommand(Constants.CMD_GIT_COMMIT_CURRENT, enabled);
         Utils.enableCommand(Constants.CMD_GIT_COMMIT_ALL, enabled);
 
@@ -3019,52 +2937,32 @@ define("src/Main", function (require, exports) {
         }
     }
 
+    let lastExecutionTime = 0;
     let isCommandExecuting = false;
-    let scheduledRefresh = null;
-    const REFRESH_DEDUPE_TIME = 3000;
-
+    const FOCUS_SWITCH_DEDUPE_TIME = 5000;
     function refreshOnFocusChange() {
         // to sync external git changes after switching to app.
         if (gitEnabled) {
-            const isGitPanelVisible = Panel.getPanel().is(":visible");
+            const now = Date.now();
 
             if (isCommandExecuting) {
-                // if we haven't already scheduled a refresh, queue one
-                if (!scheduledRefresh) {
-                    scheduledRefresh = setTimeout(() => {
-                        scheduledRefresh = null;
-                        refreshOnFocusChange();
-                    }, REFRESH_DEDUPE_TIME);
-                }
                 return;
             }
-            isCommandExecuting = true;
 
-            // if the git panel is visible, its very likely user is working with git (maybe external)
-            // so when Phoenix gains focus, we do a complete git refresh to show latest status
-            if(isGitPanelVisible) {
-                CommandManager.execute(Constants.CMD_GIT_REFRESH).fail((err) => {
-                    console.error("error refreshing on focus switch", err);
-                }).always(() => {
-                    isCommandExecuting = false;
-                    // if a refresh got queued while we were executing, run it immediately now
-                    if (scheduledRefresh) {
-                        clearTimeout(scheduledRefresh);
-                        scheduledRefresh = null;
-                        refreshOnFocusChange();
+            if (now - lastExecutionTime > FOCUS_SWITCH_DEDUPE_TIME) {
+                isCommandExecuting = true;
+                lastExecutionTime = Date.now();
+                Git.hasStatusChanged().then((hasChanged) => {
+                    if(!hasChanged){
+                        return;
                     }
-                });
-            } else {
-                // if panel not visible, we just refresh the git branch (shown in sidebar)
-                Branch.refresh();
-                isCommandExecuting = false;
 
-                // run if something got queued
-                if (scheduledRefresh) {
-                    clearTimeout(scheduledRefresh);
-                    scheduledRefresh = null;
-                    refreshOnFocusChange();
-                }
+                    CommandManager.execute(Constants.CMD_GIT_REFRESH).fail((err) => {
+                        console.error("error refreshing on focus switch", err);
+                    });
+                }).finally(()=>{
+                    isCommandExecuting = false;
+                });
             }
         }
     }
@@ -4534,23 +4432,15 @@ define("src/Panel", function (require, exports) {
 
                 lastCheckOneClicked = file;
 
-                let stagePromise;
                 if (isChecked) {
-                    stagePromise = Git.stage(file, status === Git.FILE_STATUS.DELETED).then(function () {
-                        return Git.status();
+                    Git.stage(file, status === Git.FILE_STATUS.DELETED).then(function () {
+                        Git.status();
                     });
                 } else {
-                    stagePromise = Git.unstage(file).then(function () {
-                        return Git.status();
+                    Git.unstage(file).then(function () {
+                        Git.status();
                     });
                 }
-                stagePromise.catch((err)=>{
-                    ErrorHandler.showError(err, Strings.ERROR_STAGE_FAILED, {
-                        dontStripError: true,
-                        errorMetric: "stageOne",
-                        useNotification: true
-                    });
-                });
             })
             .on("dblclick", ".check-one", function (e) {
                 e.stopPropagation();
@@ -4736,19 +4626,9 @@ define("src/Panel", function (require, exports) {
                     return Git.stageAll().then(function () {
                         return Git.status();
                     }).catch((err)=>{
-                        // this usually happens hwen a git index is locked Eg. error.
-                        //  Error: Error: fatal: Unable to create 'E:/.../test-git/.git/index.lock': File exists.
-                        //
-                        // Another git process seems to be running in this repository, e.g.
-                        // an editor opened by 'git commit'. Please make sure all processes
-                        // are terminated then try again. If it still fails, a git process
-                        // may have crashed in this repository earlier:
-                        // remove the file manually to continue.
-                        ErrorHandler.showError(err, Strings.ERROR_STAGE_FAILED, {
-                            dontStripError: true,
-                            errorMetric: "stageAll",
-                            useNotification: true
-                        });
+                        console.error(err);
+                        // rethrowing with stripped git error details as it may have sensitive info
+                        throw new Error("Error stage all by checkbox in git panel.js. this should not have happened");
                     });
                 }
                 return Git.resetIndex().then(function () {
@@ -4832,14 +4712,6 @@ define("src/Panel", function (require, exports) {
         CommandManager.register(Strings.HIDE_UNTRACKED, Constants.CMD_GIT_TOGGLE_UNTRACKED, handleToggleUntracked);
         CommandManager.register(Strings.GIT_INIT, Constants.CMD_GIT_INIT, EventEmitter.getEmitter(Events.HANDLE_GIT_INIT));
         CommandManager.register(Strings.GIT_CLONE, Constants.CMD_GIT_CLONE, EventEmitter.getEmitter(Events.HANDLE_GIT_CLONE));
-        CommandManager.register(Strings.GIT_SHOW_HISTORY, Constants.CMD_GIT_HISTORY_GLOBAL, ()=>{
-            toggle(true);
-            EventEmitter.emit(Events.HISTORY_SHOW_GLOBAL);
-        });
-        CommandManager.register(Strings.GIT_SHOW_FILE_HISTORY, Constants.CMD_GIT_HISTORY_FILE, ()=>{
-            toggle(true);
-            EventEmitter.emit(Events.HISTORY_SHOW_FILE);
-        });
 
         // Show gitPanel when appropriate
         if (Preferences.get("panelEnabled") && Setup.isExtensionActivated()) {
@@ -5940,97 +5812,6 @@ define("src/SettingsDialog", function (require, exports) {
                 collectDialogValues();
             }
         });
-    };
-});
-
-define("src/TabBarIntegration", function (require) {
-    const EventEmitter = require("src/EventEmitter");
-    const Events = require("src/Events");
-    const Git = require("src/git/Git");
-    const Preferences = require("src/Preferences");
-
-    // the cache of file statuses by path
-    let fileStatusCache = {};
-
-    /**
-     * this function is responsible to get the Git status for a file path
-     *
-     * @param {string} fullPath - the file path
-     * @returns {Array|null} - Array of status strings or null if no status
-     */
-    function getFileStatus(fullPath) {
-        return fileStatusCache[fullPath] || null;
-    }
-
-    /**
-     * whether the file is modified or not
-     *
-     * @param {string} fullPath - the file path
-     * @returns {boolean} - True if the file is modified otherwise false
-     */
-    function isModified(fullPath) {
-        const status = getFileStatus(fullPath);
-        if (!status) {
-            return false;
-        }
-        return status.some(
-            (statusType) =>
-                statusType === Git.FILE_STATUS.MODIFIED ||
-                statusType === Git.FILE_STATUS.RENAMED ||
-                statusType === Git.FILE_STATUS.COPIED
-        );
-    }
-
-    /**
-     * whether the file is untracked or not
-     *
-     * @param {string} fullPath - the file path
-     * @returns {boolean} - True if the file is untracked otherwise false
-     */
-    function isUntracked(fullPath) {
-        const status = getFileStatus(fullPath);
-        if (!status) {
-            return false;
-        }
-
-        // return true if it's untracked or if it's newly added (which means it was untracked before staging)
-        return (
-            status.includes(Git.FILE_STATUS.UNTRACKED) ||
-            (status.includes(Git.FILE_STATUS.ADDED) && status.includes(Git.FILE_STATUS.STAGED))
-        );
-    }
-
-
-    // Update file status cache when Git status results are received
-    EventEmitter.on(Events.GIT_STATUS_RESULTS, function (files) {
-        // reset the cache
-        fileStatusCache = {};
-
-        const gitRoot = Preferences.get("currentGitRoot");
-        if (!gitRoot) {
-            return;
-        }
-
-        // we need to update cache with new status results
-        files.forEach(function (entry) {
-            const fullPath = gitRoot + entry.file;
-            fileStatusCache[fullPath] = entry.status;
-        });
-
-        // notify that file statuses have been updated
-        EventEmitter.emit("GIT_FILE_STATUS_CHANGED", fileStatusCache);
-    });
-
-    // clear cache when Git is disabled
-    EventEmitter.on(Events.GIT_DISABLED, function () {
-        fileStatusCache = {};
-        EventEmitter.emit("GIT_FILE_STATUS_CHANGED", fileStatusCache);
-    });
-
-    return {
-        getFileStatus: getFileStatus,
-        isModified: isModified,
-        isUntracked: isUntracked
     };
 });
 
@@ -8565,8 +8346,6 @@ define("src/git/GitCli", function (require, exports) {
         });
     }
 
-    // this function right now is not being used anywhere,
-    // but leaving it here (we might need it in the future)
     function hasStatusChanged() {
         const prevStatus = lastGitStatusResults;
         return status().then(function (currentStatus) {

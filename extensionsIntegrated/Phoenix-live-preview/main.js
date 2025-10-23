@@ -59,11 +59,9 @@ define(function (require, exports, module) {
         Metrics            = require("utils/Metrics"),
         LiveDevelopment    = require("LiveDevelopment/main"),
         LiveDevServerManager = require("LiveDevelopment/LiveDevServerManager"),
-        MultiBrowserLiveDev = require("LiveDevelopment/LiveDevMultiBrowser"),
         NativeApp           = require("utils/NativeApp"),
         StringUtils         = require("utils/StringUtils"),
         FileSystem          = require("filesystem/FileSystem"),
-        DropdownButton     = require("widgets/DropdownButton"),
         BrowserStaticServer  = require("./BrowserStaticServer"),
         NodeStaticServer  = require("./NodeStaticServer"),
         LivePreviewSettings  = require("./LivePreviewSettings"),
@@ -86,38 +84,6 @@ define(function (require, exports, module) {
 
     const PREVIEW_TRUSTED_PROJECT_KEY = "preview_trusted";
     const PREVIEW_PROJECT_README_KEY = "preview_readme";
-
-    // live preview mode pref
-    const PREFERENCE_LIVE_PREVIEW_MODE = "livePreviewMode";
-
-    // holds the dropdown instance
-    let $dropdown = null;
-
-    /**
-     * Get the appropriate default mode based on whether edit features are active
-     * @returns {string} "highlight" if edit features inactive, "edit" if active
-     */
-    function _getDefaultMode() {
-        return LiveDevelopment.isProUser ? "edit" : "highlight";
-    }
-
-    // define the live preview mode preference
-    PreferencesManager.definePreference(PREFERENCE_LIVE_PREVIEW_MODE, "string", _getDefaultMode(), {
-        description: StringUtils.format(Strings.LIVE_PREVIEW_MODE_PREFERENCE, "'preview'", "'highlight'", "'edit'"),
-        values: ["preview", "highlight", "edit"]
-    });
-
-    // live preview element highlights preference (whether on hover or click)
-    const PREFERENCE_PROJECT_ELEMENT_HIGHLIGHT = "livePreviewElementHighlights";
-    PreferencesManager.definePreference(PREFERENCE_PROJECT_ELEMENT_HIGHLIGHT, "string", "hover", {
-        description: Strings.LIVE_DEV_SETTINGS_ELEMENT_HIGHLIGHT_PREFERENCE
-    });
-
-    // live preview image picker preference (whether to show image gallery when clicking images)
-    const PREFERENCE_PROJECT_IMAGE_RIBBON = "livePreviewImagePicker";
-    PreferencesManager.definePreference(PREFERENCE_PROJECT_IMAGE_RIBBON, "boolean", true, {
-        description: Strings.LIVE_PREVIEW_EDIT_IMAGE_RIBBON
-    });
 
     const LIVE_PREVIEW_PANEL_ID = "live-preview-panel";
     const LIVE_PREVIEW_IFRAME_ID = "panel-live-preview-frame";
@@ -143,6 +109,7 @@ define(function (require, exports, module) {
         $iframe,
         $panel,
         $pinUrlBtn,
+        $highlightBtn,
         $livePreviewPopBtn,
         $reloadBtn,
         $chromeButton,
@@ -153,23 +120,9 @@ define(function (require, exports, module) {
         $safariButtonBallast,
         $edgeButtonBallast,
         $firefoxButtonBallast,
-        $panelTitle,
-        $modeBtn,
-        $previewBtn;
+        $panelTitle;
 
     let customLivePreviewBannerShown = false;
-
-    // so this variable stores the mode that was previously selected
-    // this is needed when the preview mode (play button icon) is clicked, we store the current mode
-    // so that when user unclicks the button we can revert back to the mode that was originally selected
-    let modeThatWasSelected = null;
-
-    // live Preview overlay variables (overlays are shown when live preview is connecting or there's a syntax error)
-    let $overlayContainer = null; // the overlay container
-    let shouldShowSyncErrorOverlay = true; // once user closes the overlay we don't show them again
-    let shouldShowConnectingOverlay = true;
-    let connectingOverlayTimer = null; // this is needed as we show the connecting overlay after 3s
-    let connectingOverlayTimeDuration = 3000;
 
     StaticServer.on(EVENT_EMBEDDED_IFRAME_WHO_AM_I, function () {
         if($iframe && $iframe[0]) {
@@ -186,366 +139,8 @@ define(function (require, exports, module) {
         editor.focus();
     });
 
-    /**
-     * this function is responsible to check whether to show the overlay or not and how it should be shown
-     * because if user has closed the overlay manually, we don't show it again
-     * secondly, for connecting overlay we show that after a 3s timer, but sync error overlay is shown immediately
-     * @param {String} textMessage - the text that is written inside the overlay
-     * @param {Number} status - 1 for connect, 4 for sync error but we match it using MultiBrowserLiveDev
-     */
-    function _handleOverlay(textMessage, status) {
-        if (!$panel) { return; }
-
-        // remove any existing overlay & timer
-        _hideOverlay();
-
-        if(LivePreviewSettings.isUsingCustomServer()){
-            return;
-        }
-
-        // to not show the overlays if user has already closed it before
-        if(status === MultiBrowserLiveDev.STATUS_CONNECTING && !shouldShowConnectingOverlay) { return; }
-        if(status === MultiBrowserLiveDev.STATUS_SYNC_ERROR && !shouldShowSyncErrorOverlay) { return; }
-
-        // for connecting status, we delay showing the overlay by 3 seconds
-        if(status === MultiBrowserLiveDev.STATUS_CONNECTING) {
-            connectingOverlayTimer = setTimeout(() => {
-                _createAndShowOverlay(textMessage, status);
-                connectingOverlayTimer = null;
-            }, connectingOverlayTimeDuration);
-            return;
-        }
-
-        // for sync error status, show immediately
-        _createAndShowOverlay(textMessage, status);
-    }
-
-    /**
-     * this function is responsible to create & show the overlay.
-     * so overlay is shown when the live preview is connecting or live preview stopped because of some syntax error
-     * @param {String} textMessage - the text that is written inside the overlay
-     * @param {Number} status - 1 for connect, 4 for sync error but we match it using MultiBrowserLiveDev
-     */
-    function _createAndShowOverlay(textMessage, status) {
-        if (!$panel) { return; }
-
-        // create the overlay element
-        // styled inside the 'live-preview.css'
-        $overlayContainer = $("<div>").addClass("live-preview-status-overlay"); // the wrapper for overlay element
-        const $message = $("<div>").addClass("live-preview-overlay-message").text(textMessage);
-
-        // the close button at the right end of the overlay
-        const $close = $("<div>").addClass("live-preview-overlay-close")
-            .attr("title", Strings.LIVE_PREVIEW_HIDE_OVERLAY)
-            .on('click', () => {
-                if(status === MultiBrowserLiveDev.STATUS_CONNECTING) {
-                    shouldShowConnectingOverlay = false;
-                } else if(status === MultiBrowserLiveDev.STATUS_SYNC_ERROR) {
-                    shouldShowSyncErrorOverlay = false;
-                }
-                _hideOverlay();
-            });
-        const $closeIcon = $("<i>").addClass("fas fa-times");
-
-        $close.append($closeIcon);
-        $overlayContainer.append($message);
-        $overlayContainer.append($close);
-        $panel.append($overlayContainer);
-    }
-
-    /**
-     * responsible to hide the overlay
-     */
-    function _hideOverlay() {
-        _clearConnectingOverlayTimer();
-        if ($overlayContainer) {
-            $overlayContainer.remove();
-            $overlayContainer = null;
-        }
-    }
-
-    /**
-     * This is a helper function that just checks that if connectingOverlayTimer exists, we clear it
-     */
-    function _clearConnectingOverlayTimer() {
-        if (connectingOverlayTimer) {
-            clearTimeout(connectingOverlayTimer);
-            connectingOverlayTimer = null;
-        }
-    }
-
-    /**
-     * this function adds/remove the full-width class from the overlay container
-     * styled inside 'live-preview.css'
-     *
-     * we need this because
-     * normally when live preview has a good width (more than 305px) then a 3px divider is shown at the left end
-     * so in that case we give the overlay a width of (100% - 3px),
-     * but when the live preview width is reduced
-     * then that divider line gets cut off, so in that case we make the width 100% for this overlay
-     *
-     * without this handling, a white gap appears on the left side, which is distracting
-     */
-    function _setOverlayWidth() {
-        if(!$overlayContainer || !$panel || !$panel.length) { return; }
-        if($panel.width() <= 305) {
-            $overlayContainer.addClass("full-width");
-        } else {
-            $overlayContainer.removeClass("full-width");
-        }
-    }
-
-    function _showProFeatureDialog() {
-        const dialog = Dialogs.showModalDialog(
-            DefaultDialogs.DIALOG_ID_INFO,
-            Strings.LIVE_PREVIEW_PRO_FEATURE_TITLE,
-            Strings.LIVE_PREVIEW_PRO_FEATURE_MESSAGE,
-            [
-                {
-                    className: Dialogs.DIALOG_BTN_CLASS_NORMAL,
-                    id: Dialogs.DIALOG_BTN_CANCEL,
-                    text: Strings.CANCEL
-                },
-                {
-                    className: Dialogs.DIALOG_BTN_CLASS_PRIMARY,
-                    id: "subscribe",
-                    text: Strings.LIVE_PREVIEW_PRO_SUBSCRIBE
-                }
-            ]
-        );
-
-        dialog.done(function (buttonId) {
-            if (buttonId === "subscribe") {
-                // TODO: write the implementation here...@abose
-                console.log("the subscribe button got clicked");
-            }
-        });
-
-        return dialog;
-    }
-
-    // this function is to check if the live highlight feature is enabled or not
     function _isLiveHighlightEnabled() {
         return CommandManager.get(Commands.FILE_LIVE_HIGHLIGHT).getChecked();
-    }
-
-    /**
-     * Live Preview 'Preview Mode'. in this mode no live preview highlight or any such features are active
-     * Just the plain website
-     */
-    function _LPPreviewMode() {
-        LiveDevelopment.setLivePreviewEditFeaturesActive(false);
-        if(_isLiveHighlightEnabled()) {
-            LiveDevelopment.togglePreviewHighlight();
-        }
-    }
-
-    /**
-     * Live Preview 'Highlight Mode'. in this mode only the live preview matching with the source code is active
-     * Meaning that if user clicks on some element that element's source code will be highlighted and vice versa
-     */
-    function _LPHighlightMode() {
-        LiveDevelopment.setLivePreviewEditFeaturesActive(false);
-        if(!_isLiveHighlightEnabled()) {
-            LiveDevelopment.togglePreviewHighlight();
-        }
-    }
-
-    /**
-     * Live Preview 'Edit Mode'. this is the most interactive mode, in here the highlight features are available
-     * along with that we also show element's highlighted boxes and such
-     */
-    function _LPEditMode() {
-        LiveDevelopment.setLivePreviewEditFeaturesActive(true);
-        if(!_isLiveHighlightEnabled()) {
-            LiveDevelopment.togglePreviewHighlight();
-        }
-    }
-
-    /**
-     * update the mode button text in the live preview toolbar UI based on the current mode
-     * @param {String} mode - The current mode ("preview", "highlight", or "edit")
-     */
-    function _updateModeButton(mode) {
-        if ($modeBtn) {
-            if (mode === "highlight") {
-                $modeBtn[0].textContent = Strings.LIVE_PREVIEW_MODE_HIGHLIGHT;
-            } else if (mode === "edit") {
-                $modeBtn[0].textContent = Strings.LIVE_PREVIEW_MODE_EDIT;
-            } else {
-                $modeBtn[0].textContent = Strings.LIVE_PREVIEW_MODE_PREVIEW;
-            }
-        }
-    }
-
-    /**
-     * init live preview mode from saved preferences
-     */
-    function _initializeMode() {
-        // when user is on free trial we just push the edit mode to them every time they open/reload Phoenix
-        if(LiveDevelopment.isFreeTrialUser) {
-            PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "edit");
-            _LPEditMode();
-            $previewBtn.removeClass('selected');
-            _updateModeButton("edit");
-            return;
-        }
-
-        const savedMode = PreferencesManager.get(PREFERENCE_LIVE_PREVIEW_MODE) || _getDefaultMode();
-        const isEditFeaturesActive = LiveDevelopment.isProUser;
-
-        // If user has edit mode saved but edit features are not active, default to highlight
-        let effectiveMode = savedMode;
-        if (savedMode === "edit" && !isEditFeaturesActive) {
-            effectiveMode = "highlight";
-            // Update the preference to reflect the actual mode being used
-            PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "highlight");
-        }
-
-        // apply the effective mode
-        if (effectiveMode === "highlight") {
-            _LPHighlightMode();
-            $previewBtn.removeClass('selected');
-        } else if (effectiveMode === "edit" && isEditFeaturesActive) {
-            _LPEditMode();
-            $previewBtn.removeClass('selected');
-        } else {
-            _LPPreviewMode();
-            $previewBtn.addClass('selected');
-        }
-
-        _updateModeButton(effectiveMode);
-    }
-
-    function _showModeSelectionDropdown(event) {
-        const isEditFeaturesActive = LiveDevelopment.isProUser;
-        const items = [
-            Strings.LIVE_PREVIEW_MODE_PREVIEW,
-            Strings.LIVE_PREVIEW_MODE_HIGHLIGHT,
-            Strings.LIVE_PREVIEW_MODE_EDIT
-        ];
-
-        // Only add edit highlight option if edit features are active
-        if (isEditFeaturesActive) {
-            items.push("---");
-            items.push(Strings.LIVE_PREVIEW_EDIT_HIGHLIGHT_ON);
-            items.push(Strings.LIVE_PREVIEW_EDIT_IMAGE_RIBBON);
-        }
-
-        const rawMode = PreferencesManager.get(PREFERENCE_LIVE_PREVIEW_MODE) || _getDefaultMode();
-        // this is to take care of invalid values in the pref file
-        const currentMode = ["preview", "highlight", "edit"].includes(rawMode) ? rawMode : _getDefaultMode();
-
-        $dropdown = new DropdownButton.DropdownButton("", items, function(item, index) {
-            if (item === Strings.LIVE_PREVIEW_MODE_PREVIEW) {
-                // using empty spaces to keep content aligned
-                return currentMode === "preview" ? `✓ ${item}` : `${'\u00A0'.repeat(4)}${item}`;
-            } else if (item === Strings.LIVE_PREVIEW_MODE_HIGHLIGHT) {
-                return currentMode === "highlight" ? `✓ ${item}` : `${'\u00A0'.repeat(4)}${item}`;
-            } else if (item === Strings.LIVE_PREVIEW_MODE_EDIT) {
-                const checkmark = currentMode === "edit" ? "✓ " : `${'\u00A0'.repeat(4)}`;
-                const crownIcon = !isEditFeaturesActive ? ' <span style="color: #FBB03B; border: 1px solid #FBB03B; padding: 2px 4px; border-radius: 10px; font-size: 9px; margin-left: 12px;"><i class="fas fa-crown"></i> Pro</span>' : '';
-                return {
-                    html: `${checkmark}${item}${crownIcon}`,
-                    enabled: true
-                };
-            } else if (item === Strings.LIVE_PREVIEW_EDIT_HIGHLIGHT_ON) {
-                const isHoverMode = PreferencesManager.get(PREFERENCE_PROJECT_ELEMENT_HIGHLIGHT) !== "click";
-                if(isHoverMode) {
-                    return `✓ ${Strings.LIVE_PREVIEW_EDIT_HIGHLIGHT_ON}`;
-                }
-                return `${'\u00A0'.repeat(4)}${Strings.LIVE_PREVIEW_EDIT_HIGHLIGHT_ON}`;
-            } else if (item === Strings.LIVE_PREVIEW_EDIT_IMAGE_RIBBON) {
-                const isImageRibbonEnabled = PreferencesManager.get(PREFERENCE_PROJECT_IMAGE_RIBBON) !== false;
-                if(isImageRibbonEnabled) {
-                    return `✓ ${item}`;
-                }
-                return `${'\u00A0'.repeat(4)}${item}`;
-            }
-            return item;
-        });
-
-        // Append to document body for absolute positioning
-        $("body").append($dropdown.$button);
-
-        // Position the dropdown at the mouse coordinates
-        $dropdown.$button.css({
-            position: "absolute",
-            left: event.pageX + "px",
-            top: event.pageY + "px",
-            zIndex: 1000
-        });
-
-        // Add a custom class to override the max-height
-        $dropdown.dropdownExtraClasses = "mode-context-menu";
-
-        $dropdown.showDropdown();
-
-        $(".mode-context-menu").css("max-height", "300px");
-
-        // handle the option selection
-        $dropdown.on("select", function (e, item, index) {
-            // here we just set the preference
-            // as the preferences listener will automatically handle the required changes
-            if (index === 0) {
-                PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "preview");
-            } else if (index === 1) {
-                PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "highlight");
-            } else if (index === 2) {
-                if (!isEditFeaturesActive) {
-                    // when the feature is not active we need to show a dialog to the user asking
-                    // them to subscribe to pro
-                    _showProFeatureDialog();
-                } else {
-                    PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "edit");
-                }
-            } else if (item === Strings.LIVE_PREVIEW_EDIT_HIGHLIGHT_ON) {
-                // Don't allow edit highlight toggle if edit features are not active
-                if (!isEditFeaturesActive) {
-                    return;
-                }
-                // Toggle between hover and click
-                const currentMode = PreferencesManager.get(PREFERENCE_PROJECT_ELEMENT_HIGHLIGHT);
-                const newMode = currentMode !== "click" ? "click" : "hover";
-                PreferencesManager.set(PREFERENCE_PROJECT_ELEMENT_HIGHLIGHT, newMode);
-                return; // Don't dismiss highlights for this option
-            } else if (item === Strings.LIVE_PREVIEW_EDIT_IMAGE_RIBBON) {
-                // Don't allow image ribbon toggle if edit features are not active
-                if (!isEditFeaturesActive) {
-                    return;
-                }
-                // Toggle image ribbon preference
-                const currentEnabled = PreferencesManager.get(PREFERENCE_PROJECT_IMAGE_RIBBON);
-                PreferencesManager.set(PREFERENCE_PROJECT_IMAGE_RIBBON, !currentEnabled);
-                return; // Don't dismiss highlights for this option
-            }
-
-            // need to dismiss the previous highlighting and stuff
-            LiveDevelopment.hideHighlight();
-            LiveDevelopment.dismissLivePreviewBoxes();
-        });
-
-        // Remove the button after the dropdown is hidden
-        $dropdown.$button.css({
-            display: "none"
-        });
-    }
-
-    /**
-     * to close the overflow button's dropdown
-     */
-    function _closeDropdown() {
-        if ($dropdown) {
-            if ($dropdown.$button) {
-                $dropdown.$button.remove();
-            }
-            $dropdown = null;
-        }
-    }
-
-    function _handleLPModeBtnClick(e) {
-        e.stopPropagation();
-        $dropdown ? _closeDropdown() : _showModeSelectionDropdown(e);
     }
 
     function _getTrustProjectPage() {
@@ -692,6 +287,20 @@ define(function (require, exports, module) {
         Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "pinURLBtn", "click");
     }
 
+    function _updateLiveHighlightToggleStatus() {
+        let isHighlightEnabled = _isLiveHighlightEnabled();
+        if(isHighlightEnabled){
+            $highlightBtn.removeClass('pointer-icon').addClass('pointer-fill-icon');
+        } else {
+            $highlightBtn.removeClass('pointer-fill-icon').addClass('pointer-icon');
+        }
+    }
+
+    function _toggleLiveHighlights() {
+        LiveDevelopment.togglePreviewHighlight();
+        Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "HighlightBtn", "click");
+    }
+
     const ALLOWED_BROWSERS_NAMES = [`chrome`, `firefox`, `safari`, `edge`, `browser`, `browserPrivate`];
     function _popoutLivePreview(browserName) {
         // We cannot use $iframe.src here if panel is hidden
@@ -724,7 +333,7 @@ define(function (require, exports, module) {
         let message = Strings.LIVE_DEV_SELECT_FILE_TO_PREVIEW,
             tooltip = message;
         if(fileName){
-            message = `${fileName}`;
+            message = `${fileName} - ${Strings.LIVE_DEV_STATUS_TIP_OUT_OF_SYNC}`;
             tooltip = StringUtils.format(Strings.LIVE_DEV_TOOLTIP_SHOW_IN_EDITOR, fileName);
         }
         if(currentLivePreviewURL){
@@ -758,37 +367,13 @@ define(function (require, exports, module) {
         }
     }
 
-    /**
-     * This function is called when user clicks the preview mode button (play button icon)
-     * when this button is clicked we switch the mode button dropdown to preview mode
-     */
-    function _handlePreviewBtnClick() {
-        if($previewBtn.hasClass('selected')) {
-            $previewBtn.removeClass('selected');
-            const isEditFeaturesActive = LiveDevelopment.isProUser;
-            if(modeThatWasSelected) {
-                if(modeThatWasSelected === 'edit' && !isEditFeaturesActive) {
-                    // we just set the preference as preference has change handlers that will update the config
-                    PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "highlight");
-                } else {
-                    PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, modeThatWasSelected);
-                }
-            }
-        } else {
-            $previewBtn.addClass('selected');
-            modeThatWasSelected = PreferencesManager.get(PREFERENCE_LIVE_PREVIEW_MODE);
-            PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "preview");
-        }
-    }
-
     async function _createExtensionPanel() {
         let templateVars = {
             Strings: Strings,
             livePreview: Strings.LIVE_DEV_STATUS_TIP_OUT_OF_SYNC,
             clickToReload: Strings.LIVE_DEV_CLICK_TO_RELOAD_PAGE,
-            clickToPreview: Strings.LIVE_PREVIEW_MODE_PREVIEW,
+            toggleLiveHighlight: Strings.LIVE_DEV_TOGGLE_LIVE_HIGHLIGHT,
             livePreviewSettings: Strings.LIVE_DEV_SETTINGS,
-            livePreviewConfigureModes: Strings.LIVE_PREVIEW_CONFIGURE_MODES,
             clickToPopout: Strings.LIVE_DEV_CLICK_POPOUT,
             openInChrome: Strings.LIVE_DEV_OPEN_CHROME,
             openInSafari: Strings.LIVE_DEV_OPEN_SAFARI,
@@ -803,6 +388,7 @@ define(function (require, exports, module) {
         $panel = $(Mustache.render(panelHTML, templateVars));
         $iframe = $panel.find("#panel-live-preview-frame");
         $pinUrlBtn = $panel.find("#pinURLButton");
+        $highlightBtn = $panel.find("#highlightLPButton");
         $reloadBtn = $panel.find("#reloadLivePreviewButton");
         $livePreviewPopBtn = $panel.find("#livePreviewPopoutButton");
         $chromeButton = $panel.find("#chromeButton");
@@ -816,8 +402,6 @@ define(function (require, exports, module) {
         $firefoxButtonBallast = $panel.find("#firefoxButtonBallast");
         $panelTitle = $panel.find("#panel-live-preview-title");
         $settingsIcon = $panel.find("#livePreviewSettingsBtn");
-        $modeBtn = $panel.find("#livePreviewModeBtn");
-        $previewBtn = $panel.find("#previewModeLivePreviewButton");
 
         $panel.find(".live-preview-settings-banner-btn").on("click", ()=>{
             CommandManager.execute(Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS);
@@ -850,10 +434,6 @@ define(function (require, exports, module) {
         $firefoxButton.on("click", ()=>{
             _popoutLivePreview("firefox");
         });
-
-        $modeBtn.on("click", _handleLPModeBtnClick);
-        $previewBtn.on("click", _handlePreviewBtnClick);
-
         _showOpenBrowserIcons();
         $settingsIcon.click(()=>{
             CommandManager.execute(Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS);
@@ -876,16 +456,14 @@ define(function (require, exports, module) {
             PANEL_MIN_SIZE, $icon, INITIAL_PANEL_SIZE);
 
         WorkspaceManager.recomputeLayout(false);
+        _updateLiveHighlightToggleStatus();
         $pinUrlBtn.click(_togglePinUrl);
+        $highlightBtn.click(_toggleLiveHighlights);
         $livePreviewPopBtn.click(_popoutLivePreview);
         $reloadBtn.click(()=>{
             _loadPreview(true, true);
             Metrics.countEvent(Metrics.EVENT_TYPE.LIVE_PREVIEW, "reloadBtn", "click");
         });
-
-        // Set up ResizeObserver for overlay width adjustments
-        // to understand why we're doing this read _setOverlayWidth function
-        new ResizeObserver(_setOverlayWidth).observe($panel[0]);
     }
 
     async function _loadPreview(force, isReload) {
@@ -1063,26 +641,11 @@ define(function (require, exports, module) {
         }
     }
 
-    function _activeDocChanged(event, focusedEditor, lostEditor) {
+    function _activeDocChanged() {
         if(!LivePreviewSettings.isUsingCustomServer() && !LiveDevelopment.isActive()
             && (panel.isVisible() || StaticServer.hasActiveLivePreviews())) {
             // we do this only once after project switch if live preview for a doc is not active.
             LiveDevelopment.openLivePreview();
-        }
-
-        // we hide the overlay when there's no editor or its a non-previewable file
-        if (!focusedEditor || !focusedEditor.document) {
-            _hideOverlay();
-            return;
-        }
-
-        const filePath = focusedEditor.document.file.fullPath;
-        const isPreviewable = utils.isPreviewableFile(filePath) || utils.isServerRenderedFile(filePath);
-        const customServeURL = LivePreviewSettings.isUsingCustomServer() &&
-            LivePreviewSettings.getCustomServerConfig(filePath);
-
-        if (!isPreviewable && !customServeURL) {
-            _hideOverlay();
         }
     }
 
@@ -1098,7 +661,6 @@ define(function (require, exports, module) {
      */
     async function _openLivePreviewURL(_event, previewDetails) {
         if(LivePreviewSettings.isUsingCustomServer()){
-            _hideOverlay();
             return;
         }
         _loadPreview(true);
@@ -1106,13 +668,6 @@ define(function (require, exports, module) {
         if(currentPreviewDetails.isHTMLFile && currentPreviewDetails.fullPath !== previewDetails.fullPath){
             console.error("Live preview URLs differ between phoenix live preview extension and core live preview",
                 currentPreviewDetails, previewDetails);
-        }
-
-        const status = MultiBrowserLiveDev.status;
-        if (status === MultiBrowserLiveDev.STATUS_CONNECTING) {
-            _handleOverlay(Strings.LIVE_DEV_STATUS_TIP_PROGRESS1, status);
-        } else if (status === MultiBrowserLiveDev.STATUS_SYNC_ERROR) {
-            _handleOverlay(Strings.LIVE_DEV_STATUS_TIP_SYNC_ERROR, status);
         }
     }
 
@@ -1232,18 +787,6 @@ define(function (require, exports, module) {
         });
     }
 
-    function _registerHandlers() {
-        // when clicked anywhere on the page we want to close the dropdown
-        $("html").on("click", function (e) {
-            if ($(e.target).closest("#livePreviewModeBtn").length) { return; }
-            _closeDropdown();
-        });
-
-        $(document).on("click", "#livePreviewModeBtn", function (e) {
-            _handleLPModeBtnClick(e);
-        });
-    }
-
     AppInit.appReady(function () {
         if(Phoenix.isSpecRunnerWindow){
             return;
@@ -1285,56 +828,9 @@ define(function (require, exports, module) {
         fileMenu.addMenuItem(Commands.FILE_LIVE_FILE_PREVIEW_SETTINGS, "",
             Menus.AFTER, Commands.FILE_LIVE_FILE_PREVIEW);
         fileMenu.addMenuDivider(Menus.BEFORE, Commands.FILE_LIVE_FILE_PREVIEW);
-
-        _registerHandlers();
-        // init live preview mode from saved preferences
-        _initializeMode();
-        // listen for pref changes
-        PreferencesManager.on("change", PREFERENCE_LIVE_PREVIEW_MODE, function () {
-            // Get the current preference value directly
-            const newMode = PreferencesManager.get(PREFERENCE_LIVE_PREVIEW_MODE);
-            const isEditFeaturesActive = LiveDevelopment.isProUser;
-
-            // If user tries to set edit mode but edit features are not active, default to highlight
-            let effectiveMode = newMode;
-            if (newMode === "edit" && !isEditFeaturesActive) {
-                effectiveMode = "highlight";
-                // Update the preference to reflect the actual mode being used
-                PreferencesManager.set(PREFERENCE_LIVE_PREVIEW_MODE, "highlight");
-                return; // Return to avoid infinite loop
-            }
-
-            if (effectiveMode === "highlight") {
-                _LPHighlightMode();
-                $previewBtn.removeClass('selected');
-            } else if (effectiveMode === "edit" && isEditFeaturesActive) {
-                _LPEditMode();
-                $previewBtn.removeClass('selected');
-            } else {
-                _LPPreviewMode();
-                $previewBtn.addClass('selected');
-            }
-
-            _updateModeButton(effectiveMode);
-        });
-
-        // Handle element highlight preference changes from this extension
-        PreferencesManager.on("change", PREFERENCE_PROJECT_ELEMENT_HIGHLIGHT, function() {
-            LiveDevelopment.updateElementHighlightConfig();
-        });
-
-        // Handle image ribbon preference changes from this extension
-        PreferencesManager.on("change", PREFERENCE_PROJECT_IMAGE_RIBBON, function() {
-            LiveDevelopment.updateImageRibbonConfig();
-        });
-
-        // Initialize element highlight config on startup
-        LiveDevelopment.updateElementHighlightConfig();
-        // Initialize image ribbon config on startup
-        LiveDevelopment.updateImageRibbonConfig();
-
         LiveDevelopment.openLivePreview();
         LiveDevelopment.on(LiveDevelopment.EVENT_OPEN_PREVIEW_URL, _openLivePreviewURL);
+        LiveDevelopment.on(LiveDevelopment.EVENT_LIVE_HIGHLIGHT_PREF_CHANGED, _updateLiveHighlightToggleStatus);
         LiveDevelopment.on(LiveDevelopment.EVENT_LIVE_PREVIEW_RELOAD, ()=>{
             // Usually, this event is listened by live preview iframes/tabs and they initiate a location.reload.
             // But in firefox, the embedded iframe will throw a 404 when we try to reload from within the iframe as
@@ -1342,18 +838,6 @@ define(function (require, exports, module) {
             // the service worker. So we have to reload the iframe from its parent- ie. phcode.dev. This is not
             // required in chrome, but we just keep it just for all platforms behaving the same.
             _loadPreview(true);
-        });
-
-        MultiBrowserLiveDev.on(MultiBrowserLiveDev.EVENT_STATUS_CHANGE, function(event, status) {
-            if(LivePreviewSettings.isUsingCustomServer()){
-                _hideOverlay();
-            } else if (status === MultiBrowserLiveDev.STATUS_CONNECTING) {
-                _handleOverlay(Strings.LIVE_DEV_STATUS_TIP_PROGRESS1, status);
-            } else if (status === MultiBrowserLiveDev.STATUS_SYNC_ERROR) {
-                _handleOverlay(Strings.LIVE_DEV_STATUS_TIP_SYNC_ERROR, status);
-            } else {
-                _hideOverlay();
-            }
         });
 
         function refreshPreview() {

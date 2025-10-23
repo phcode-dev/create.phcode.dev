@@ -8,7 +8,6 @@ define(function (require, exports) {
         CommandManager  = brackets.getModule("command/CommandManager"),
         DocumentManager = brackets.getModule("document/DocumentManager"),
         EditorManager   = brackets.getModule("editor/EditorManager"),
-        ScrollTrackMarkers  = brackets.getModule("search/ScrollTrackMarkers"),
         MainViewManager = brackets.getModule("view/MainViewManager"),
         ErrorHandler    = require("src/ErrorHandler"),
         Events          = require("src/Events"),
@@ -16,8 +15,6 @@ define(function (require, exports) {
         Git             = require("src/git/Git"),
         Preferences     = require("./Preferences"),
         Strings             = brackets.getModule("strings");
-
-    const GIT_SCROLL_MARKS = "git_marks";
 
     var gitAvailable = false,
         gutterName = "brackets-git-gutter",
@@ -49,11 +46,6 @@ define(function (require, exports) {
 
     function _cursorActivity(_evt, editor){
         // this is to prevent a gutter gap in the active line if there is no color on this line.
-        if (editor.hasSelection()){
-            // we dont show the gutter gap color when there is a selection. also adding dummy gutter is expensive
-            // and make test selection with cursor choppy
-            return;
-        }
         _addDummyGutterMarkerIfNotExist(editor._codeMirror, editor.getCursorPos().line);
     }
 
@@ -133,7 +125,7 @@ define(function (require, exports) {
         }
     }
 
-    function _showGutters(editor, _results) {
+    function showGutters(editor, _results) {
         prepareGutter(editor);
 
         var cm = editor._codeMirror;
@@ -145,8 +137,8 @@ define(function (require, exports) {
         cm.clearGutter(gutterName);
         cm.gitGutters.forEach(function (obj) {
             var $marker = $("<div>")
-                .addClass(gutterName + "-" + obj.type + " gitline-" + (obj.line + 1))
-                .html("&nbsp;");
+                            .addClass(gutterName + "-" + obj.type + " gitline-" + (obj.line + 1))
+                            .html("&nbsp;");
             cm.setGutterMarker(obj.line, gutterName, $marker[0]);
         });
         _cursorActivity(null, editor);
@@ -222,48 +214,6 @@ define(function (require, exports) {
         return doc && doc._masterEditor;
     }
 
-    function hasVerticalScrollbar(editor) {
-        const cm = editor._codeMirror;
-        const scrollEl = cm.getScrollerElement();
-        return scrollEl.scrollHeight > scrollEl.clientHeight;
-    }
-
-
-    function _markScrollbar(editor, allChanges) {
-        ScrollTrackMarkers.clear(editor, GIT_SCROLL_MARKS);
-        if(!hasVerticalScrollbar(editor)){
-            return;
-        }
-        const added = allChanges
-            .filter(item => item.type === "added")
-            .map(({ line }) => ({ line, ch: 0 }));
-
-        const removed = allChanges
-            .filter(item => item.type === "removed")
-            .map(({ line }) => ({ line, ch: 0 }));
-
-        const modified = allChanges
-            .filter(item => item.type === "modified")
-            .map(({ line }) => ({ line, ch: 0 }));
-
-        const trackers = [
-            {arr: added, css: "brackets-git-added"},
-            {arr: removed, css: "brackets-git-removed"},
-            {arr: modified, css: "brackets-git-modified"}
-        ];
-        for(let tracker of trackers) {
-            if( !tracker.arr.length ){
-                continue;
-            }
-            let posArray = tracker.arr.map(item => ({ line: item.line, ch: 0 }));
-            ScrollTrackMarkers.addTickmarks(editor, posArray, {
-                trackStyle: ScrollTrackMarkers.TRACK_STYLES.ON_LEFT,
-                name: GIT_SCROLL_MARKS,
-                cssColorClass: tracker.css
-            });
-        }
-    }
-
     function processDiffResults(editor, diff) {
         var added = [],
             removed = [],
@@ -289,9 +239,9 @@ define(function (require, exports) {
                     type: "removed",
                     line: lineRemovedFrom,
                     content: str.split("\n")
-                        .filter(function (l) { return l.indexOf("-") === 0; })
-                        .map(function (l) { return l.substring(1); })
-                        .join("\n")
+                                .filter(function (l) { return l.indexOf("-") === 0; })
+                                .map(function (l) { return l.substring(1); })
+                                .join("\n")
                 });
             }
 
@@ -329,9 +279,7 @@ define(function (require, exports) {
             o.line = o.line + 1;
         });
 
-        const allChanges = [].concat(added, removed, modified);
-        _showGutters(editor, allChanges);
-        _markScrollbar(editor, allChanges);
+        showGutters(editor, [].concat(added, removed, modified));
     }
 
     function refresh() {

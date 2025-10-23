@@ -1050,23 +1050,15 @@ define(function (require, exports) {
 
                 lastCheckOneClicked = file;
 
-                let stagePromise;
                 if (isChecked) {
-                    stagePromise = Git.stage(file, status === Git.FILE_STATUS.DELETED).then(function () {
-                        return Git.status();
+                    Git.stage(file, status === Git.FILE_STATUS.DELETED).then(function () {
+                        Git.status();
                     });
                 } else {
-                    stagePromise = Git.unstage(file).then(function () {
-                        return Git.status();
+                    Git.unstage(file).then(function () {
+                        Git.status();
                     });
                 }
-                stagePromise.catch((err)=>{
-                    ErrorHandler.showError(err, Strings.ERROR_STAGE_FAILED, {
-                        dontStripError: true,
-                        errorMetric: "stageOne",
-                        useNotification: true
-                    });
-                });
             })
             .on("dblclick", ".check-one", function (e) {
                 e.stopPropagation();
@@ -1252,19 +1244,9 @@ define(function (require, exports) {
                     return Git.stageAll().then(function () {
                         return Git.status();
                     }).catch((err)=>{
-                        // this usually happens hwen a git index is locked Eg. error.
-                        //  Error: Error: fatal: Unable to create 'E:/.../test-git/.git/index.lock': File exists.
-                        //
-                        // Another git process seems to be running in this repository, e.g.
-                        // an editor opened by 'git commit'. Please make sure all processes
-                        // are terminated then try again. If it still fails, a git process
-                        // may have crashed in this repository earlier:
-                        // remove the file manually to continue.
-                        ErrorHandler.showError(err, Strings.ERROR_STAGE_FAILED, {
-                            dontStripError: true,
-                            errorMetric: "stageAll",
-                            useNotification: true
-                        });
+                        console.error(err);
+                        // rethrowing with stripped git error details as it may have sensitive info
+                        throw new Error("Error stage all by checkbox in git panel.js. this should not have happened");
                     });
                 }
                 return Git.resetIndex().then(function () {
@@ -1348,14 +1330,6 @@ define(function (require, exports) {
         CommandManager.register(Strings.HIDE_UNTRACKED, Constants.CMD_GIT_TOGGLE_UNTRACKED, handleToggleUntracked);
         CommandManager.register(Strings.GIT_INIT, Constants.CMD_GIT_INIT, EventEmitter.getEmitter(Events.HANDLE_GIT_INIT));
         CommandManager.register(Strings.GIT_CLONE, Constants.CMD_GIT_CLONE, EventEmitter.getEmitter(Events.HANDLE_GIT_CLONE));
-        CommandManager.register(Strings.GIT_SHOW_HISTORY, Constants.CMD_GIT_HISTORY_GLOBAL, ()=>{
-            toggle(true);
-            EventEmitter.emit(Events.HISTORY_SHOW_GLOBAL);
-        });
-        CommandManager.register(Strings.GIT_SHOW_FILE_HISTORY, Constants.CMD_GIT_HISTORY_FILE, ()=>{
-            toggle(true);
-            EventEmitter.emit(Events.HISTORY_SHOW_FILE);
-        });
 
         // Show gitPanel when appropriate
         if (Preferences.get("panelEnabled") && Setup.isExtensionActivated()) {

@@ -43,8 +43,8 @@ define(function (require, exports, module) {
         PathUtils                 = require("thirdparty/path-utils/path-utils"),
         itemTemplate              = require("text!htmlContent/extension-manager-view-item.html"),
         PreferencesManager        = require("preferences/PreferencesManager"),
-        DefaultExtensions         = JSON.parse(require("text!extensions/default/DefaultExtensions.json")),
-        warnExtensionIDs          = new Set(DefaultExtensions.warnExtensionStoreExtensions.extensionIDs),
+        warnExtensionIDs = JSON.parse(require("text!extensions/default/DefaultExtensions.json"))
+            .warnExtensionStoreExtensions.extensionIDs,
         Metrics                   = require("utils/Metrics");
 
 
@@ -363,8 +363,7 @@ define(function (require, exports, module) {
         context.isCurrentTheme = entry.installInfo &&
             (entry.installInfo.metadata.name === ThemeManager.getCurrentTheme().name);
 
-        context.defaultFeature = warnExtensionIDs.has(info.metadata.name);
-        context.isDeprecatedExtension = ExtensionManager.isExtensionTakenDown(info.metadata.name);
+        context.defaultFeature = warnExtensionIDs.includes(info.metadata.name);
 
         context.allowInstall = context.isCompatible && !context.isInstalled;
 
@@ -420,9 +419,9 @@ define(function (require, exports, module) {
         var isDefaultOrInstalled = this.model.source === "default" || this.model.source === "installed";
         var isDefaultAndTheme = this.model.source === "default" && context.metadata.theme;
         context.disablingAllowed = isDefaultOrInstalled && !isDefaultAndTheme && !context.disabled
-            && !hasPendingAction && !context.metadata.theme && !context.isDeprecatedExtension;
+            && !hasPendingAction && !context.metadata.theme;
         context.enablingAllowed = isDefaultOrInstalled && !isDefaultAndTheme && context.disabled
-            && !hasPendingAction && !context.metadata.theme && !context.isDeprecatedExtension;
+            && !hasPendingAction && !context.metadata.theme;
 
         // Copy over helper functions that we share with the registry app.
         ["lastVersionDate", "authorInfo"].forEach(function (helper) {

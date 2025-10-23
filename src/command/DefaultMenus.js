@@ -185,8 +185,6 @@ define(function (require, exports, module) {
         menu.addMenuItem(Commands.SHOW_CODE_HINTS);
         menu.addMenuDivider();
         menu.addMenuItem(Commands.TOGGLE_CLOSE_BRACKETS);
-        menu.addMenuItem(Commands.EDIT_EMMET);
-
 
         /*
          * Find menu
@@ -267,17 +265,8 @@ define(function (require, exports, module) {
         menu = Menus.addMenu(Strings.HELP_MENU, Menus.AppMenuBar.HELP_MENU);
         menu.addMenuItem(Commands.HELP_DOCS);
         menu.addMenuItem(Commands.HELP_SUPPORT);
-        menu.addMenuDivider();
-        menu.addMenuItem(Commands.HELP_GET_PRO);
-        if(Phoenix.isNativeApp) {
-            menu.addMenuItem(Commands.HELP_MANAGE_LICENSES);
-        }
-        menu.addMenuDivider();
         if (brackets.config.suggest_feature_url) {
             menu.addMenuItem(Commands.HELP_SUGGEST);
-        }
-        if (brackets.config.report_issue_url) {
-            menu.addMenuItem(Commands.HELP_REPORT_ISSUE);
         }
         if (brackets.config.get_involved_url) {
             menu.addMenuItem(Commands.HELP_GET_INVOLVED);
@@ -350,9 +339,6 @@ define(function (require, exports, module) {
         splitview_menu.addMenuDivider();
         splitview_menu.addMenuItem(Commands.CMD_WORKING_SORT_TOGGLE_AUTO);
         splitview_menu.addMenuItem(Commands.FILE_SHOW_FOLDERS_FIRST);
-        splitview_menu.addMenuDivider();
-        splitview_menu.addMenuItem(Commands.CMD_TOGGLE_SHOW_WORKING_SET);
-        splitview_menu.addMenuItem(Commands.CMD_TOGGLE_SHOW_FILE_TABS);
 
         var project_cmenu = Menus.registerContextMenu(Menus.ContextMenuIds.PROJECT_MENU);
         project_cmenu.addMenuItem(Commands.FILE_NEW);
@@ -412,10 +398,6 @@ define(function (require, exports, module) {
          * an existing selection
          */
         $("#editor-holder").on("contextmenu", function (e) {
-            // make sure that the click was not made inside a tab bar container
-            // if it is, then we don't show editor context menu as tab bar has its own
-            if($(e.target).closest('.tab-bar-container').length) { return; }
-
             require(["editor/EditorManager"], function (EditorManager) {
                 if ($(e.target).parents(".CodeMirror-gutter").length !== 0) {
                     return;

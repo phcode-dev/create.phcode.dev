@@ -554,10 +554,6 @@ define(function (require, exports, module) {
         await awaitsForDone(promise);
     }
 
-    /**
-     * Waits for any modal dialogs to appear, waits for default for 2 seconds
-     * note: this is a test-only/short task function and shouldn't be used in production as this polls
-      */
     async function waitForModalDialog(timeout=2000) {
         // Make sure there's one and only one dialog open
         await awaitsFor(()=>{
@@ -566,10 +562,6 @@ define(function (require, exports, module) {
         }, timeout);
     }
 
-    /**
-     * Waits for any modal dialogs to close, waits for default for 2 seconds
-     * note: this is a test-only/short task function and shouldn't be used in production as this polls
-     */
     async function waitForNoModalDialog(timeout=2000) {
         // Make sure there's one and only one dialog open
         await awaitsFor(()=>{

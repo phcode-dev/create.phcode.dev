@@ -215,8 +215,6 @@ define(function (require, exports, module) {
     /** Toggles code beautification on save */
     exports.EDIT_BEAUTIFY_CODE_ON_SAVE  = "edit.beautifyOnSave";         // CodeHintManager.js           _startNewSession()
 
-    exports.EDIT_EMMET                 = "edit.emmet";                 // HTMLCodeHints CSSCodeHints
-
     /** Opens find dialog */
     exports.CMD_FIND                    = "cmd.find";                   // FindReplace.js               _launchFind()
 
@@ -259,10 +257,6 @@ define(function (require, exports, module) {
 
     /** Toggles sidebar visibility */
     exports.VIEW_HIDE_SIDEBAR           = "view.toggleSidebar";         // SidebarView.js               toggle()
-
-    /** Toggles tabbar visibility */
-    exports.TOGGLE_TABBAR            = "view.toggleTabbar";
-    // extensionsIntegrated/TabBar/main.js
 
     /** Zooms in the editor view */
     exports.VIEW_ZOOM_IN                = "view.zoomIn";                // ViewCommandHandlers.js       _handleZoomIn()
@@ -405,17 +399,8 @@ define(function (require, exports, module) {
     /** Opens support resources */
     exports.HELP_SUPPORT                = "help.support";               // HelpCommandHandlers.js       _handleLinkMenuItem()
 
-    /** Opens Phoenix Pro page */
-    exports.HELP_GET_PRO                = "help.getPro";                // HelpCommandHandlers.js       _handleLinkMenuItem()
-
-    /** Manage Pro licenses */
-    exports.HELP_MANAGE_LICENSES        = "help.manageLicenses";        // HelpCommandHandlers.js       _handleLinkMenuItem()
-
     /** Opens feature suggestion page */
     exports.HELP_SUGGEST                = "help.suggest";               // HelpCommandHandlers.js       _handleLinkMenuItem()
-
-    /** Opens report issue page */
-    exports.HELP_REPORT_ISSUE           = "help.reportIssue";               // HelpCommandHandlers.js       _handleLinkMenuItem()
 
     /** Opens release notes */
     exports.HELP_RELEASE_NOTES          = "help.releaseNotes";          // HelpCommandHandlers.js       _handleLinkMenuItem()
@@ -457,12 +442,6 @@ define(function (require, exports, module) {
     /** Toggles automatic working set sorting */
     exports.CMD_WORKING_SORT_TOGGLE_AUTO  = "cmd.sortWorkingSetToggleAuto";  // WorkingSetSort.js       _handleToggleAutoSort()
 
-    /** Toggles working set visibility */
-    exports.CMD_TOGGLE_SHOW_WORKING_SET  = "cmd.toggleShowWorkingSet";      // SidebarView.js       _handleToggleWorkingSet()
-
-    /** Toggles file tabs visibility */
-    exports.CMD_TOGGLE_SHOW_FILE_TABS  = "cmd.toggleShowFileTabs";          // SidebarView.js       _handleToggleFileTabs()
-
     /** Opens keyboard navigation UI overlay */
     exports.CMD_KEYBOARD_NAV_UI_OVERLAY  = "cmd.keyboardNavUI";  // WorkingSetSort.js       _handleToggleAutoSort()
 
@@ -503,9 +482,6 @@ define(function (require, exports, module) {
 
     /** Shows the sidebar */
     exports.SHOW_SIDEBAR                = "view.showSidebar";           // SidebarView.js               show()
-
-    /** Reinstalls credentials in keychain */
-    exports.REINSTALL_CREDS             = "debug.reinstallCreds";       // login-service.js             handleReinstallCreds()
 
     // commands
     /** Initializes a new git repository */
@@ -589,15 +565,10 @@ define(function (require, exports, module) {
     /** Toggles display of untracked files */
     exports.CMD_GIT_TOGGLE_UNTRACKED = "git-toggle-untracked";
 
-    /** Toggles global history view in history panel */
-    exports.CMD_GIT_HISTORY_GLOBAL = "git-history-global";
-
-    /** Toggles file history view in history panel */
-    exports.CMD_GIT_HISTORY_FILE = "git-history-file";
-
     // DEPRECATED: Working Set Commands
     DeprecationWarning.deprecateConstant(exports, "SORT_WORKINGSET_BY_ADDED",   "CMD_WORKINGSET_SORT_BY_ADDED");
     DeprecationWarning.deprecateConstant(exports, "SORT_WORKINGSET_BY_NAME",    "CMD_WORKINGSET_SORT_BY_NAME");
     DeprecationWarning.deprecateConstant(exports, "SORT_WORKINGSET_BY_TYPE",    "CMD_WORKINGSET_SORT_BY_TYPE");
     DeprecationWarning.deprecateConstant(exports, "SORT_WORKINGSET_AUTO",       "CMD_WORKING_SORT_TOGGLE_AUTO");
 });
+

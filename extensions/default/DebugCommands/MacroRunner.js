@@ -498,12 +498,10 @@ define(function (require, exports, module) {
         /**
          * Opens a file in the first pane (left/top)
          * @param {string} filePath - Project relative or absolute file path
-         * @param {boolean} [addToWorkingSet] - true to add to working set
          * @returns {Promise} A promise that resolves when the file is opened
          */
-        openFileInFirstPane: function(filePath, addToWorkingSet) {
-            const command = addToWorkingSet ? Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN : Commands.FILE_OPEN;
-            return jsPromise(CommandManager.execute(command, {
+        openFileInFirstPane: function(filePath) {
+            return jsPromise(CommandManager.execute(Commands.FILE_OPEN, {
                 fullPath: _getFullPath(filePath),
                 paneId: "first-pane"
             }));
@@ -512,12 +510,10 @@ define(function (require, exports, module) {
         /**
          * Opens a file in the second pane (right/bottom)
          * @param {string} filePath - Project relative or absolute file path
-         * @param {boolean} addToWorkingSet - true to add to working set
          * @returns {Promise} A promise that resolves when the file is opened
          */
-        openFileInSecondPane: function(filePath, addToWorkingSet) {
-            const command = addToWorkingSet ? Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN : Commands.FILE_OPEN;
-            return jsPromise(CommandManager.execute(command, {
+        openFileInSecondPane: function(filePath) {
+            return jsPromise(CommandManager.execute(Commands.FILE_OPEN, {
                 fullPath: _getFullPath(filePath),
                 paneId: "second-pane"
             }));
@@ -776,8 +772,7 @@ define(function (require, exports, module) {
         closeFile, closeAll, undo, redo, setPreference, getPreference, validateEqual, validateNotEqual, execCommand,
         saveActiveFile,
         awaitsFor, waitForModalDialog, waitForModalDialogClosed, clickDialogButtonID, clickDialogButton,
-        EDITING, // contains apis like splitVertical, openFileInFirstPane. focus pane etc...
-        $, Commands, Dialogs
+        EDITING, $, Commands, Dialogs
     };
 
     async function runMacro(macroText) {

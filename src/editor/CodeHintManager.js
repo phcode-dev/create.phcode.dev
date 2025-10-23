@@ -266,9 +266,6 @@ define(function (require, exports, module) {
         codeHintsEnabled = true,
         codeHintOpened   = false;
 
-    // API for extensions to show hints at the top
-    let hintsAtTopHandler = null;
-
     PreferencesManager.definePreference("showCodeHints", "boolean", true, {
         description: Strings.DESCRIPTION_SHOW_CODE_HINTS
     });
@@ -450,27 +447,11 @@ define(function (require, exports, module) {
             return hintList.callMoveUp(callMoveUpEvent);
         }
 
-        var response = null;
-
-        // Get hints from regular provider if available
-        if (sessionProvider) {
-            response = sessionProvider.getHints(lastChar);
-        }
-
+        var response = sessionProvider.getHints(lastChar);
         lastChar = null;
 
-        // we need this to track if we used hintsAtTopHandler as fallback
-        // because otherwise we will end up calling it twice
-        var usedTopHintsAsFallback = false;
-
-        // If regular provider doesn't have hints, try hints-at-top handler
-        if (!response && hintsAtTopHandler && hintsAtTopHandler.getHints) {
-            response = hintsAtTopHandler.getHints(sessionEditor, lastChar);
-            usedTopHintsAsFallback = true;
-        }
-
         if (!response) {
-            // No provider wishes to show hints, close the session
+            // the provider wishes to close the session
             _endSession();
         } else {
             // if the response is true, end the session and begin another
@@ -480,18 +461,6 @@ define(function (require, exports, module) {
                 _endSession();
                 _beginSession(previousEditor);
             } else if (response.hasOwnProperty("hints")) { // a synchronous response
-                // allow extensions to modify the response by adding hints at the top
-                // BUT only if we didn't already use the top hints as fallback
-                if (!usedTopHintsAsFallback && sessionProvider && hintsAtTopHandler && hintsAtTopHandler.getHints) {
-                    var topHints = hintsAtTopHandler.getHints(sessionEditor, lastChar);
-
-                    if (topHints && topHints.hints && topHints.hints.length > 0) {
-                        // Prepend the top hints to the existing response
-                        var combinedHints = topHints.hints.concat(response.hints);
-                        response = $.extend({}, response, { hints: combinedHints });
-                    }
-                }
-
                 if (hintList.isOpen()) {
                     // the session is open
                     hintList.update(response);
@@ -508,15 +477,6 @@ define(function (require, exports, module) {
                     if (!hintList) {
                         return;
                     }
-                    // allow extensions to modify the response by adding hints at the top
-                    if (sessionProvider && hintsAtTopHandler && hintsAtTopHandler.getHints) {
-                        var topHints = hintsAtTopHandler.getHints(sessionEditor, lastChar);
-                        if (topHints && topHints.hints && topHints.hints.length > 0) {
-                            // Prepend the top hints to the existing response
-                            var combinedHints = topHints.hints.concat(hints.hints);
-                            hints = $.extend({}, hints, { hints: combinedHints });
-                        }
-                    }
 
                     if (hintList.isOpen()) {
                         // the session is open
@@ -527,7 +487,7 @@ define(function (require, exports, module) {
                 });
             }
         }
-    };
+    }
 
     /**
      * Try to begin a new hinting session.
@@ -549,29 +509,21 @@ define(function (require, exports, module) {
         var language = editor.getLanguageForSelection(),
             enabledProviders = _getProvidersForLanguageId(language.getId());
 
-        // Check if hints-at-top handler has hints first to avoid duplication
-        var hasTopHints = false;
-        if (hintsAtTopHandler && hintsAtTopHandler.hasHints) {
-            hasTopHints = hintsAtTopHandler.hasHints(editor, lastChar);
-        }
+        enabledProviders.some(function (item, index) {
+            if (item.provider.hasHints(editor, lastChar)) {
+                sessionProvider = item.provider;
+                return true;
+            }
+        });
 
-        // Find a suitable provider only if hints-at-top handler doesn't have hints
-        if (!hasTopHints) {
-            enabledProviders.some(function (item, index) {
-                if (item.provider.hasHints(editor, lastChar)) {
-                    sessionProvider = item.provider;
-                    return true;
-                }
-            });
-        }
-
-        // If a provider is found or top hints are available, initialize the hint list and update it
-        if (sessionProvider || hasTopHints) {
-            var insertHintOnTab = PreferencesManager.get("insertHintOnTab"),
+        // If a provider is found, initialize the hint list and update it
+        if (sessionProvider) {
+            var insertHintOnTab,
                 maxCodeHints = PreferencesManager.get("maxCodeHints");
-
-            if (sessionProvider && sessionProvider.insertHintOnTab !== undefined) {
+            if (sessionProvider.insertHintOnTab !== undefined) {
                 insertHintOnTab = sessionProvider.insertHintOnTab;
+            } else {
+                insertHintOnTab = PreferencesManager.get("insertHintOnTab");
             }
 
             sessionEditor = editor;
@@ -579,41 +531,26 @@ define(function (require, exports, module) {
             hintList.onHighlight(function ($hint, $hintDescContainer, reason) {
                 if (hintList.enableDescription && $hintDescContainer && $hintDescContainer.length) {
                     // If the current hint provider listening for hint item highlight change
-                    if (sessionProvider && sessionProvider.onHighlight) {
+                    if (sessionProvider.onHighlight) {
                         sessionProvider.onHighlight($hint, $hintDescContainer, reason);
                     }
 
                     // Update the hint description
-                    if (sessionProvider && sessionProvider.updateHintDescription) {
+                    if (sessionProvider.updateHintDescription) {
                         sessionProvider.updateHintDescription($hint, $hintDescContainer);
                     }
                 } else {
-                    if (sessionProvider && sessionProvider.onHighlight) {
+                    if (sessionProvider.onHighlight) {
                         sessionProvider.onHighlight($hint, undefined, reason);
                     }
                 }
             });
             hintList.onSelect(function (hint) {
-                // allow extensions to handle special hint selections
-                var handled = false;
-                if (hintsAtTopHandler && hintsAtTopHandler.insertHint) {
-                    handled = hintsAtTopHandler.insertHint(hint);
-                }
-
-                if (handled) {
-                    // If hints-at-top handler handled it, end the session
-                    _endSession();
-                } else if (sessionProvider) {
-                    // Regular hint provider handling
-                    var restart = sessionProvider.insertHint(hint),
-                        previousEditor = sessionEditor;
-                    _endSession();
-                    if (restart) {
-                        _beginSession(previousEditor);
-                    }
-                } else {
-                    // if none of the provider handled it, we just end the session
-                    _endSession();
+                var restart = sessionProvider.insertHint(hint),
+                    previousEditor = sessionEditor;
+                _endSession();
+                if (restart) {
+                    _beginSession(previousEditor);
                 }
             });
             hintList.onClose(()=>{
@@ -761,26 +698,6 @@ define(function (require, exports, module) {
     }
 
     /**
-     * Register a handler to show hints at the top of the hint list.
-     * This API allows extensions to add their own hints at the top of the standard hint list.
-     *
-     * @param {Object} handler - A hint provider object with standard methods:
-     *   - hasHints: function(editor, implicitChar) - returns true if hints are available
-     *   - getHints: function(editor, implicitChar) - returns hint response object with hints array
-     *   - insertHint: function(hint) - handles hint insertion, returns true if handled
-     */
-    function showHintsAtTop(handler) {
-        hintsAtTopHandler = handler;
-    }
-
-    /**
-     * Unregister the hints at top handler.
-     */
-    function clearHintsAtTop() {
-        hintsAtTopHandler = null;
-    }
-
-    /**
      * Explicitly start a new session. If we have an existing session,
      * then close the current one and restart a new one.
      * @private
@@ -863,8 +780,6 @@ define(function (require, exports, module) {
     exports.isOpen                  = isOpen;
     exports.registerHintProvider    = registerHintProvider;
     exports.hasValidExclusion       = hasValidExclusion;
-    exports.showHintsAtTop          = showHintsAtTop;
-    exports.clearHintsAtTop         = clearHintsAtTop;
 
     exports.SELECTION_REASON        = CodeHintListModule._SELECTION_REASON;
 });

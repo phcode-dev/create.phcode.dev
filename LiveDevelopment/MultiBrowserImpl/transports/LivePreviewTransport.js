@@ -111,8 +111,7 @@ define(function (require, exports, module) {
         _transportBridge && _transportBridge.messageToLivePreviewTabs({
             type: 'MESSAGE_FROM_PHOENIX',
             clientIDs,
-            message,
-            messageID: crypto.randomUUID()
+            message
         });
         transportMessagesSendCount ++;
         transportMessagesSendSizeB = transportMessagesSendSizeB + message.length;
@@ -136,7 +135,7 @@ define(function (require, exports, module) {
         window.logger.livePreview.log(
             "Live Preview: Phoenix received event from Browser preview tab/iframe: ", event.data);
         const message = event.data.message.message || "";
-        exports.trigger('message', [event.data.message.clientID, message, event.data.message.messageID]);
+        exports.trigger('message', [event.data.message.clientID, message]);
         transportMessagesRecvSizeB = transportMessagesRecvSizeB + message.length;
         transportMessagesRecvCount++;
     }

@@ -203,9 +203,7 @@ define(function (require, exports, module) {
                 }
                 expect(rangeMarker).toBeDefined();
                 let range = rangeMarker.find();
-                // there are two quick views, if the test started before css lint, then we will only have color preview
-                // at ch:11, else the css lint error preview starts at 4
-                expect([4, 11].includes(range.from.ch)).toBeTrue();
+                expect(range.from.ch).toBe(4);
                 expect(range.to.ch).toBe(18);
             });
 
