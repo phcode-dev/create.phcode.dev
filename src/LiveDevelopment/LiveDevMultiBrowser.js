@@ -700,6 +700,53 @@ define(function (require, exports, module) {
     }
 
     /**
+     * Check if live preview boxes are currently visible
+     */
+    function hasVisibleLivePreviewBoxes() {
+        if (_protocol) {
+            return _protocol.evaluate("_LD.hasVisibleLivePreviewBoxes()");
+        }
+        return false;
+    }
+
+    /**
+     * Dismiss live preview boxes like info box, options box, AI box
+     */
+    function dismissLivePreviewBoxes() {
+        if (_protocol) {
+            _protocol.evaluate("_LD.dismissUIAndCleanupState()");
+            _protocol.evaluate("_LD.dismissImageRibbonGallery()");
+        }
+    }
+
+    /**
+     * Dismiss image ribbon gallery if it's open
+     */
+    function dismissImageRibbonGallery() {
+        if (_protocol) {
+            _protocol.evaluate("_LD.dismissImageRibbonGallery()");
+        }
+    }
+
+    /**
+     * Register event handlers in the remote browser for live preview functionality
+     */
+    function registerHandlers() {
+        if (_protocol) {
+            _protocol.evaluate("_LD.registerHandlers()");
+        }
+    }
+
+    /**
+     * Update configuration in the remote browser
+     */
+    function updateConfig(configJSON) {
+        if (_protocol) {
+            _protocol.evaluate("_LD.updateConfig('" + configJSON + "')");
+        }
+    }
+
+    /**
      * Originally unload and reload agents. It doesn't apply for this new implementation.
      * @return {jQuery.Promise} Already resolved promise.
      */
@@ -765,6 +812,11 @@ define(function (require, exports, module) {
     exports.showHighlight       = showHighlight;
     exports.hideHighlight       = hideHighlight;
     exports.redrawHighlight     = redrawHighlight;
+    exports.hasVisibleLivePreviewBoxes = hasVisibleLivePreviewBoxes;
+    exports.dismissLivePreviewBoxes = dismissLivePreviewBoxes;
+    exports.dismissImageRibbonGallery = dismissImageRibbonGallery;
+    exports.registerHandlers    = registerHandlers;
+    exports.updateConfig        = updateConfig;
     exports.init                = init;
     exports.isActive            = isActive;
     exports.setLivePreviewPinned= setLivePreviewPinned;

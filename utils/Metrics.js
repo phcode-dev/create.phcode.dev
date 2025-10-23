@@ -119,7 +119,9 @@ define(function (require, exports, module) {
         USER: "user",
         NODEJS: "node",
         LINT: "lint",
-        GIT: "git"
+        GIT: "git",
+        AUTH: "auth",
+        PRO: "pro"
     };
 
     /**
@@ -403,6 +405,7 @@ define(function (require, exports, module) {
     }
 
     function setDisabled(shouldDisable) {
+        Phoenix._setHealthTrackingDisabled(shouldDisable);
         disabled = shouldDisable;
     }
 

@@ -29,8 +29,8 @@ define(function (require, exports) {
     const CMD_ADD_TO_IGNORE      = "git.addToIgnore",
         CMD_REMOVE_FROM_IGNORE = "git.removeFromIgnore",
         $icon                  = $(`<a id='git-toolbar-icon' title="${Strings.STATUSBAR_SHOW_GIT}" href='#'></a>`)
-                                    .addClass("forced-hidden")
-                                    .prependTo($(".bottom-buttons"));
+            .addClass("forced-hidden")
+            .prependTo($(".bottom-buttons"));
 
     let gitEnabled = false;
 
@@ -160,7 +160,7 @@ define(function (require, exports) {
         const displayStr = StringUtils.format(Strings.RESET_DETAIL, commitDetailStr, gitCmdUsed);
         Utils.askQuestion(title,
             message + "<br><br>" + displayStr,
-            { booleanResponse: true, noescape: true ,
+            { booleanResponse: true, noescape: true,
                 customOkBtn: Strings.RESET, customOkBtnClass: "danger"})
             .then(function (response) {
                 if (response === true) {
@@ -228,7 +228,10 @@ define(function (require, exports) {
             // "More options" context menu commands
             Constants.CMD_GIT_DISCARD_ALL_CHANGES,
             Constants.CMD_GIT_UNDO_LAST_COMMIT,
-            Constants.CMD_GIT_TOGGLE_UNTRACKED
+            Constants.CMD_GIT_TOGGLE_UNTRACKED,
+
+            Constants.CMD_GIT_HISTORY_GLOBAL,
+            Constants.CMD_GIT_HISTORY_FILE
         ];
 
         // Disable each command
@@ -256,6 +259,9 @@ define(function (require, exports) {
         gitSubMenu.addMenuItem(Constants.CMD_GIT_GOTO_NEXT_CHANGE);
         gitSubMenu.addMenuItem(Constants.CMD_GIT_GOTO_PREVIOUS_CHANGE);
         gitSubMenu.addMenuItem(Constants.CMD_GIT_CLOSE_UNMODIFIED);
+        gitSubMenu.addMenuDivider();
+        gitSubMenu.addMenuItem(Constants.CMD_GIT_HISTORY_GLOBAL);
+        gitSubMenu.addMenuItem(Constants.CMD_GIT_HISTORY_FILE);
         gitSubMenu.addMenuDivider();
         gitSubMenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_SELECTION);
         gitSubMenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_FILE);
@@ -303,6 +309,9 @@ define(function (require, exports) {
         Menus.ContextMenu.assignContextMenuToSelector(".git-more-options-btn", optionsCmenu);
         optionsCmenu.addMenuItem(Constants.CMD_GIT_DISCARD_ALL_CHANGES);
         optionsCmenu.addMenuItem(Constants.CMD_GIT_UNDO_LAST_COMMIT);
+        optionsCmenu.addMenuDivider();
+        optionsCmenu.addMenuItem(Constants.CMD_GIT_HISTORY_GLOBAL);
+        optionsCmenu.addMenuItem(Constants.CMD_GIT_HISTORY_FILE);
         optionsCmenu.addMenuDivider();
         optionsCmenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_SELECTION);
         optionsCmenu.addMenuItem(Constants.CMD_GIT_AUTHORS_OF_FILE);
@@ -370,6 +379,9 @@ define(function (require, exports) {
         Utils.enableCommand(Constants.CMD_GIT_AUTHORS_OF_SELECTION, enabled);
         Utils.enableCommand(Constants.CMD_GIT_AUTHORS_OF_FILE, enabled);
 
+        Utils.enableCommand(Constants.CMD_GIT_HISTORY_GLOBAL, enabled);
+        Utils.enableCommand(Constants.CMD_GIT_HISTORY_FILE, enabled);
+
         Utils.enableCommand(Constants.CMD_GIT_COMMIT_CURRENT, enabled);
         Utils.enableCommand(Constants.CMD_GIT_COMMIT_ALL, enabled);
 
@@ -387,32 +399,52 @@ define(function (require, exports) {
         }
     }
 
-    let lastExecutionTime = 0;
     let isCommandExecuting = false;
-    const FOCUS_SWITCH_DEDUPE_TIME = 5000;
+    let scheduledRefresh = null;
+    const REFRESH_DEDUPE_TIME = 3000;
+
     function refreshOnFocusChange() {
         // to sync external git changes after switching to app.
         if (gitEnabled) {
-            const now = Date.now();
+            const isGitPanelVisible = Panel.getPanel().is(":visible");
 
             if (isCommandExecuting) {
+                // if we haven't already scheduled a refresh, queue one
+                if (!scheduledRefresh) {
+                    scheduledRefresh = setTimeout(() => {
+                        scheduledRefresh = null;
+                        refreshOnFocusChange();
+                    }, REFRESH_DEDUPE_TIME);
+                }
                 return;
             }
+            isCommandExecuting = true;
 
-            if (now - lastExecutionTime > FOCUS_SWITCH_DEDUPE_TIME) {
-                isCommandExecuting = true;
-                lastExecutionTime = Date.now();
-                Git.hasStatusChanged().then((hasChanged) => {
-                    if(!hasChanged){
-                        return;
-                    }
-
-                    CommandManager.execute(Constants.CMD_GIT_REFRESH).fail((err) => {
-                        console.error("error refreshing on focus switch", err);
-                    });
-                }).finally(()=>{
+            // if the git panel is visible, its very likely user is working with git (maybe external)
+            // so when Phoenix gains focus, we do a complete git refresh to show latest status
+            if(isGitPanelVisible) {
+                CommandManager.execute(Constants.CMD_GIT_REFRESH).fail((err) => {
+                    console.error("error refreshing on focus switch", err);
+                }).always(() => {
                     isCommandExecuting = false;
+                    // if a refresh got queued while we were executing, run it immediately now
+                    if (scheduledRefresh) {
+                        clearTimeout(scheduledRefresh);
+                        scheduledRefresh = null;
+                        refreshOnFocusChange();
+                    }
                 });
+            } else {
+                // if panel not visible, we just refresh the git branch (shown in sidebar)
+                Branch.refresh();
+                isCommandExecuting = false;
+
+                // run if something got queued
+                if (scheduledRefresh) {
+                    clearTimeout(scheduledRefresh);
+                    scheduledRefresh = null;
+                    refreshOnFocusChange();
+                }
             }
         }
     }

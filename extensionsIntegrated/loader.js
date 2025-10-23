@@ -43,4 +43,7 @@ define(function (require, exports, module) {
     require("./HtmlTagSyncEdit/main");
     require("./indentGuides/main");
     require("./CSSColorPreview/main");
+    require("./TabBar/main");
+    require("./CustomSnippets/main");
+    require("./CollapseFolders/main");
 });

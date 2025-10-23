@@ -18,7 +18,6 @@
  *
  */
 
-/*global Phoenix*/
 /*eslint no-console: 0*/
 /*eslint strict: ["error", "global"]*/
 /* jshint ignore:start */
@@ -35,22 +34,7 @@ define(function (require, exports, module) {
         DefaultDialogs = require("widgets/DefaultDialogs");
 
     const PERSIST_STORAGE_DIALOG_DELAY_SECS = 60000;
-    let $icon;
 
-    function _addToolbarIcon() {
-        const helpButtonID = "help-button";
-        $icon = $("<a>")
-            .attr({
-                id: helpButtonID,
-                href: "#",
-                class: "help",
-                title: Strings.CMD_SUPPORT
-            })
-            .appendTo($("#main-toolbar .bottom-buttons"));
-        $icon.on('click', ()=>{
-            Phoenix.app.openURLInDefaultBrowser(brackets.config.support_url);
-        });
-    }
     function _showUnSupportedBrowserDialogue() {
         if(Phoenix.browser.isMobile || Phoenix.browser.isTablet){
             Dialogs.showModalDialog(
@@ -108,7 +92,6 @@ define(function (require, exports, module) {
         if(Phoenix.isSpecRunnerWindow){
             return;
         }
-        _addToolbarIcon();
         serverSync.init();
         defaultProjects.init();
         newProject.init();

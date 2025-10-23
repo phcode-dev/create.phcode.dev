@@ -40,7 +40,7 @@
         }
     }
     const urlParams = new URLSearchParams(window.location.search || "");
-    const isBugsnagEnabled = (!window.testEnvironment && isBugsnagLoggableURL);
+    const isBugsnagEnabled = (!window.testEnvironment && isBugsnagLoggableURL && !Phoenix.healthTrackingDisabled);
     const MAX_ERR_SENT_RESET_INTERVAL = 60000,
         MAX_ERR_SENT_FIRST_MINUTE = 10,
         MAX_ERR_ALLOWED_IN_MINUTE = 2;
@@ -68,6 +68,8 @@
                 Bugsnag.notify(message?
                     new CustomBugSnagError(message, error)
                     :error);
+            } else {
+                console.error(message, error, error.nodeStack);
             }
         },
         /**
@@ -79,6 +81,8 @@
         reportErrorMessage: function (message) {
             if(isBugsnagEnabled) {
                 Bugsnag.notify(new CustomBugSnagError(message));
+            } else {
+                console.error(message);
             }
         },
 

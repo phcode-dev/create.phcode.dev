@@ -61,6 +61,21 @@ define(function (require, exports, module) {
         NodeUtils           = require("utils/NodeUtils"),
         _                   = require("thirdparty/lodash");
 
+    const KernalModeTrust = window.KernalModeTrust;
+    if(!KernalModeTrust){
+        throw new Error("KernalModeTrust is not defined. Cannot boot without trust ring");
+    }
+    async function _resetTauriTrustRingBeforeRestart() {
+        // This is needed as if for a given tauri window, the trust ring can only be set once. So reloading the app
+        // in the same window, tauri will deny setting new keys.
+        // this is a security measure to prevent a malicious extension from setting its own key.
+        try {
+            await KernalModeTrust.dismantleKeyring();
+        } catch (e) {
+            console.error("Error while resetting trust ring before restart", e);
+        }
+    }
+
     /**
      * Handlers for commands related to document handling (opening, saving, etc.)
      */
@@ -139,6 +154,30 @@ define(function (require, exports, module) {
         excludeFromHints: true
     });
     EventDispatcher.makeEventDispatcher(exports);
+
+
+    PreferencesManager.definePreference("emmet", "boolean", true, {
+        description: Strings.DESCRIPTION_EMMET
+    });
+
+    // Register the Emmet toggle command
+    const EMMET_COMMAND_ID = "edit.emmet";
+    const emmetCommand = CommandManager.register(Strings.CMD_TOGGLE_EMMET, EMMET_COMMAND_ID, toggleEmmet);
+
+    // Set initial state based on the preference
+    emmetCommand.setChecked(PreferencesManager.get("emmet"));
+
+    // Helper function to toggle the Emmet preference
+    function toggleEmmet() {
+        PreferencesManager.set("emmet", !PreferencesManager.get("emmet"));
+        emmetCommand.setChecked(PreferencesManager.get("emmet"));
+    }
+
+    // Listen for any change in the "emmet" preference and update the menu's toggle state
+    // this is needed because else the menu is not getting updated when the preference is changed
+    PreferencesManager.on("change", "emmet", function () {
+        emmetCommand.setChecked(PreferencesManager.get("emmet"));
+    });
 
     /**
      * Event triggered when File Save is cancelled, when prompted to save dirty files
@@ -2049,6 +2088,9 @@ define(function (require, exports, module) {
                     .finally(()=>{
                         raceAgainstTime(_safeNodeTerminate(), 4000)
                             .finally(()=>{
+                                _resetTauriTrustRingBeforeRestart();
+                                // we do not wait/raceAgainstTime here purposefully to prevent attacks that will rely
+                                // on this brief window of no trust zone in while the kernal trust key is being reset.
                                 window.location.href = href;
                             });
                     });

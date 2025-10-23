@@ -4,6 +4,7 @@ define(function (require, exports) {
         Mustache                   = brackets.getModule("thirdparty/mustache/mustache"),
         Metrics                    = brackets.getModule("utils/Metrics"),
         Strings                    = brackets.getModule("strings"),
+        NotificationUI             = brackets.getModule("widgets/NotificationUI"),
         Utils                      = require("src/Utils"),
         errorDialogTemplate        = require("text!templates/git-error-dialog.html");
 
@@ -40,12 +41,11 @@ define(function (require, exports) {
      *
      * @param err
      * @param title
-     * @param {dontStripError: boolean, errorMetric: string} options
+     * @param {dontStripError: boolean, errorMetric: string, useNotification: boolean} options
      */
     exports.showError = function (err, title, options = {}) {
         const dontStripError = options.dontStripError;
         const errorMetric = options.errorMetric;
-        Metrics.countEvent(Metrics.EVENT_TYPE.GIT, 'dialogErr', errorMetric || "Show");
         if (err.__shown) { return err; }
 
         exports.logError(err);
@@ -67,14 +67,27 @@ define(function (require, exports) {
                 errorBody = "Error can't be stringified by JSON.stringify";
             }
         }
+        errorBody = window.debugMode ? `${errorBody}\n${errorStack}` : errorBody;
 
-        var compiledTemplate = Mustache.render(errorDialogTemplate, {
-            title: title,
-            body: window.debugMode ? `${errorBody}\n${errorStack}` : errorBody,
-            Strings: Strings
-        });
+        if(options.useNotification){
+            Metrics.countEvent(Metrics.EVENT_TYPE.GIT, 'notifyErr', errorMetric || "Show");
+            NotificationUI.createToastFromTemplate(title,
+                `<textarea readonly style="width: 200px; height: 200px; cursor: text; resize: none;">${errorBody}</textarea>`, {
+                    toastStyle: NotificationUI.NOTIFICATION_STYLES_CSS_CLASS.ERROR,
+                    dismissOnClick: false,
+                    instantOpen: true
+                });
+        } else {
+            Metrics.countEvent(Metrics.EVENT_TYPE.GIT, 'dialogErr', errorMetric || "Show");
+            const compiledTemplate = Mustache.render(errorDialogTemplate, {
+                title: title,
+                body: errorBody,
+                Strings: Strings
+            });
 
-        Dialogs.showModalDialogUsingTemplate(compiledTemplate);
+            Dialogs.showModalDialogUsingTemplate(compiledTemplate);
+        }
+
         if (typeof err === "string") { err = new Error(err); }
         err.__shown = true;
         return err;

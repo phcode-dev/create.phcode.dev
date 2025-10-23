@@ -820,6 +820,10 @@ define(function (require, exports, module) {
     }
     // this command is defined in core, but exposed only in Debug menu for now
     debugMenu.addMenuItem(Commands.FILE_OPEN_KEYMAP, null);
+    // Reinstall credentials menu item (native apps only)
+    if(Phoenix.isNativeApp) {
+        debugMenu.addMenuItem(Commands.REINSTALL_CREDS, null);
+    }
     const diagnosticsSubmenu = debugMenu.addSubMenu(Strings.CMD_DIAGNOSTIC_TOOLS, DIAGNOSTICS_SUBMENU);
     diagnosticsSubmenu.addMenuItem(DEBUG_RUN_UNIT_TESTS);
     CommandManager.register(Strings.CMD_BUILD_TESTS, DEBUG_BUILD_TESTS, TestBuilder.toggleTestBuilder);
@@ -1381,10 +1385,12 @@ define("MacroRunner", function (require, exports, module) {
         /**
          * Opens a file in the first pane (left/top)
          * @param {string} filePath - Project relative or absolute file path
+         * @param {boolean} [addToWorkingSet] - true to add to working set
          * @returns {Promise} A promise that resolves when the file is opened
          */
-        openFileInFirstPane: function(filePath) {
-            return jsPromise(CommandManager.execute(Commands.FILE_OPEN, {
+        openFileInFirstPane: function(filePath, addToWorkingSet) {
+            const command = addToWorkingSet ? Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN : Commands.FILE_OPEN;
+            return jsPromise(CommandManager.execute(command, {
                 fullPath: _getFullPath(filePath),
                 paneId: "first-pane"
             }));
@@ -1393,10 +1399,12 @@ define("MacroRunner", function (require, exports, module) {
         /**
          * Opens a file in the second pane (right/bottom)
          * @param {string} filePath - Project relative or absolute file path
+         * @param {boolean} addToWorkingSet - true to add to working set
          * @returns {Promise} A promise that resolves when the file is opened
          */
-        openFileInSecondPane: function(filePath) {
-            return jsPromise(CommandManager.execute(Commands.FILE_OPEN, {
+        openFileInSecondPane: function(filePath, addToWorkingSet) {
+            const command = addToWorkingSet ? Commands.CMD_ADD_TO_WORKINGSET_AND_OPEN : Commands.FILE_OPEN;
+            return jsPromise(CommandManager.execute(command, {
                 fullPath: _getFullPath(filePath),
                 paneId: "second-pane"
             }));
@@ -1655,7 +1663,8 @@ define("MacroRunner", function (require, exports, module) {
         closeFile, closeAll, undo, redo, setPreference, getPreference, validateEqual, validateNotEqual, execCommand,
         saveActiveFile,
         awaitsFor, waitForModalDialog, waitForModalDialogClosed, clickDialogButtonID, clickDialogButton,
-        EDITING, $, Commands, Dialogs
+        EDITING, // contains apis like splitVertical, openFileInFirstPane. focus pane etc...
+        $, Commands, Dialogs
     };
 
     async function runMacro(macroText) {

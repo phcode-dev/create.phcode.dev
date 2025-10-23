@@ -23,6 +23,7 @@ define(function (require, exports, module) {
 
     require("spec/Phoenix-platform-test");
     require("spec/Tauri-platform-test");
+    require("spec/trust-ring-test");
     require("spec/utframework-suite-test");
     require("spec/Async-test");
     require("spec/CommandManager-test");
@@ -118,7 +119,12 @@ define(function (require, exports, module) {
     require("spec/TaskManager-integ-test");
     require("spec/Generic-integ-test");
     require("spec/spacing-auto-detect-integ-test");
+    require("spec/promotions-integ-test");
+    require("spec/login-browser-integ-test");
+    require("spec/login-desktop-integ-test");
     require("spec/LocalizationUtils-test");
+    require("spec/ScrollTrackHandler-integ-test");
+    require("spec/login-utils-test");
     // Integrated extension tests
     require("spec/Extn-InAppNotifications-integ-test");
     require("spec/Extn-RemoteFileAdapter-integ-test");
@@ -127,6 +133,8 @@ define(function (require, exports, module) {
     require("spec/Extn-JSHint-integ-test");
     require("spec/Extn-ESLint-integ-test");
     require("spec/Extn-CSSColorPreview-integ-test");
+    require("spec/Extn-CollapseFolders-integ-test");
+    require("spec/Extn-Tabbar-integ-test");
     // extension integration tests
     require("spec/Extn-CSSCodeHints-integ-test");
     require("spec/Extn-HTMLCodeHints-Lint-integ-test");

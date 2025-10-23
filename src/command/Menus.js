@@ -736,7 +736,19 @@ define(function (require, exports, module) {
                 Metrics.countEvent(Metrics.EVENT_TYPE.UI_MENU, "click", menuItem._command.getID());
                 logger.leaveTrail("UI Menu Click: " + menuItem._command.getID());
                 MainViewManager.focusActivePane();
-                if (menuItem._command._options.eventSource) {
+                const commandId = menuItem._command.getID();
+
+                // NOTE: we handle save commands differently because we want save commands to go through the
+                // CommandManager.execute() to trigger beforeExecuteCommand events consistently, whether invoked via
+                // menu click or keyboard shortcut.
+                // because there are listeners that uses beforeExecuteCommand to listen to save commands
+                // (for ex: tabbar listens to save commands to add placeholder tabs to working set)
+                // Other commands use direct execution to preserve file tree context
+                if(commandId === Commands.FILE_SAVE ||
+                   commandId === Commands.FILE_SAVE_AS ||
+                   commandId === Commands.FILE_SAVE_ALL) {
+                    CommandManager.execute(commandId);
+                } else if (menuItem._command._options.eventSource) {
                     menuItem._command.execute({
                         eventSource: CommandManager.SOURCE_UI_MENU_CLICK,
                         sourceType: self.id
@@ -1103,6 +1115,11 @@ define(function (require, exports, module) {
                 }
             });
         } else {
+            const htmlName = this._command.getOptions().htmlName;
+            if(htmlName) {
+                $(_getHTMLMenuItem(this.id)).find(".menu-name").html(htmlName);
+                return;
+            }
             $(_getHTMLMenuItem(this.id)).find(".menu-name").text(this._command.getName());
         }
     };
