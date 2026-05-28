@@ -34,7 +34,7 @@
         "app_update_url": "https://updates.phcode.io/tauri/update-latest-stable-prod.json",
         "extensionTakedownURL": "https://updates.phcode.io/extension_takedown.json",
         "linting.enabled_by_default": true,
-        "build_timestamp": "2026-01-19T17:06:02.236Z",
+        "build_timestamp": "2026-05-28T19:04:45.124Z",
         "googleAnalyticsID": "G-FBK9RP5YK2",
         "googleAnalyticsIDDesktop": "G-M7MX9BYZZ3",
         "mixPanelID": "8cb6814f733e37c05cc59b4adad26407",
@@ -46,8 +46,8 @@
         "bugsnagEnv": "production"
     },
     "name": "Phoenix Code",
-    "version": "5.0.5-21948",
-    "apiVersion": "5.0.5",
+    "version": "5.1.24-23027",
+    "apiVersion": "5.1.24",
     "homepage": "https://core.ai",
     "issues": {
         "url": "https://github.com/phcode-dev/phoenix/issues"
