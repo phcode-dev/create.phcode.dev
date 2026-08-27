@@ -46,6 +46,7 @@
 @import "Extn-CSSColorPreview.less";
 @import "Extn-CustomSnippets.less";
 @import "Extn-CollapseFolders.less";
+@import "Extn-MigrateAssist.less";
 @import "Extn-SidebarTabs.less";
 @import "Extn-BottomPanelTabs.less";
 @import "Extn-AIChatPanel.less";
@@ -335,7 +336,7 @@ a, img {
         left: (@sidebar-width + 30px);  // changed dynamically via Resizer + CentralControlBar
         right: @main-toolbar-width;
         z-index: @z-index-brackets-main-content;
-        border-left: 2px solid rgba(255, 255, 255, 0.10);
+        border-left: 2px solid transparent;
         border-right: 2px solid rgba(255, 255, 255, 0.10);
     }
 
