@@ -39,7 +39,7 @@
             "ruff": "0.15.20"
         },
         "linting.enabled_by_default": true,
-        "build_timestamp": "2026-08-27T15:12:29.088Z",
+        "build_timestamp": "2026-08-27T20:17:22.700Z",
         "googleAnalyticsID": "G-G3DTS3ZR09",
         "googleAnalyticsIDDesktop": "G-M7MX9BYZZ3",
         "mixPanelID": "8cb6814f733e37c05cc59b4adad26407",
@@ -51,8 +51,8 @@
         "bugsnagEnv": "production"
     },
     "name": "Phoenix Code",
-    "version": "5.4.0-23352",
-    "apiVersion": "5.4.0",
+    "version": "5.5.0-23355",
+    "apiVersion": "5.5.0",
     "homepage": "https://core.ai",
     "issues": {
         "url": "https://github.com/phcode-dev/phoenix/issues"
