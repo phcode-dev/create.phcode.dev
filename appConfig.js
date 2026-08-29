@@ -40,7 +40,7 @@ window.AppConfig = {
             "ruff": "0.15.20"
         },
         "linting.enabled_by_default": true,
-        "build_timestamp": "2026-08-29T09:52:03.638Z",
+        "build_timestamp": "2026-08-29T18:06:07.547Z",
         "googleAnalyticsID": "G-G3DTS3ZR09",
         "googleAnalyticsIDDesktop": "G-M7MX9BYZZ3",
         "mixPanelID": "8cb6814f733e37c05cc59b4adad26407",
@@ -52,8 +52,8 @@ window.AppConfig = {
         "bugsnagEnv": "production"
     },
     "name": "Phoenix Code",
-    "version": "5.5.1-23362",
-    "apiVersion": "5.5.1",
+    "version": "5.5.3-23365",
+    "apiVersion": "5.5.3",
     "homepage": "https://core.ai",
     "issues": {
         "url": "https://github.com/phcode-dev/phoenix/issues"
